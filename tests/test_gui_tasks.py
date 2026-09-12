@@ -150,3 +150,37 @@ def test_lookup_ip_task_uses_checker(gui_container, monkeypatch):
 
     monkeypatch.setattr(checker, "ensure_direct_ip", fake_ensure)
     assert _run(tasks.lookup_ip(gui_container)) == "203.0.113.7"
+
+
+def test_create_configuration_task(gui_container):
+    cfg = _run(
+        tasks.create_configuration(
+            gui_container, "task-made", timezone="Europe/Moscow"
+        )
+    )
+    assert cfg.id > 0
+    assert cfg.timezone == "Europe/Moscow"
+
+
+def test_update_configuration_task(gui_container):
+    cfg = _run(tasks.create_configuration(gui_container, "task-edit"))
+    updated = _run(
+        tasks.update_configuration(
+            gui_container, cfg.id, timezone="Asia/Tokyo"
+        )
+    )
+    assert updated.timezone == "Asia/Tokyo"
+
+
+def test_align_configuration_geo_task(gui_container):
+    cfg = _run(tasks.create_configuration(gui_container, "task-align"))
+    fixed = _run(tasks.align_configuration_geo(gui_container, cfg.id, "DE"))
+    assert fixed.timezone == "Europe/Berlin"
+    assert fixed.locale == "de-DE"
+
+
+def test_get_configuration_task(gui_container):
+    cfg = _run(tasks.create_configuration(gui_container, "task-get"))
+    loaded = _run(tasks.get_configuration(gui_container, cfg.id))
+    assert loaded.id == cfg.id
+    assert loaded.name == "task-get"

@@ -36,11 +36,30 @@ def error_details(exc: Any) -> str:
         return f"{type(exc).__name__}: {exc}"
 
 
-def show_error(parent: QWidget | None, exc: Any) -> None:
-    """Raise a themed modal error dialog for ``exc``."""
+def show_error(
+    parent: QWidget | None,
+    exc: Any,
+    actions: list[tuple[str, Any]] | None = None,
+) -> None:
+    """Raise a themed modal error dialog for ``exc``.
+
+    ``actions`` optionally adds extra buttons: ``[(label, callback)]``.
+    The callback runs (on the GUI thread) when its button is pressed, then
+    the dialog closes. Used e.g. for one-click fixes offered next to the
+    error they resolve.
+    """
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Warning)
     box.setWindowTitle("Antidetect")
     box.setText(friendly_error_text(exc))
     box.setDetailedText(error_details(exc))
+    callbacks: dict[int, Any] = {}
+    for label, callback in actions or []:
+        button = box.addButton(label, QMessageBox.ButtonRole.ActionRole)
+        callbacks[id(button)] = callback
+    box.addButton(QMessageBox.StandardButton.Close)
     box.exec()
+    clicked = box.clickedButton()
+    callback = callbacks.get(id(clicked)) if clicked is not None else None
+    if callback is not None:
+        callback()

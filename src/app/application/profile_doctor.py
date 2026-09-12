@@ -84,6 +84,12 @@ class DoctorFinding:
     fix: str
 
 
+#: Every timezone the app understands, for dropdowns and validation. The
+#: doctor maps each of these to an exit country; anything else is rejected
+#: at configuration creation time with a message pointing here.
+SUPPORTED_TIMEZONES: tuple[str, ...] = tuple(sorted(TIMEZONE_COUNTRY))
+
+
 @dataclass
 class DoctorReport:
     ok: bool

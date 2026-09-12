@@ -173,3 +173,38 @@ def test_delete_configuration_detaches_profiles(config, fake_chromium):
 def test_delete_missing_configuration_raises(config_service):
     with pytest.raises(BrowserConfigurationNotFoundError):
         config_service.delete_configuration(404)
+
+
+def test_create_rejects_unknown_timezone(config_service):
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        config_service.create_configuration("Bad TZ", timezone="UTC+3")
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        config_service.create_configuration("Bad TZ 2", timezone="Moscow")
+
+
+def test_create_accepts_supported_timezone_without_user_agent(config_service):
+    cfg = config_service.create_configuration("TZ Only", timezone="Europe/Moscow")
+    assert cfg.timezone == "Europe/Moscow"
+
+
+def test_update_rejects_unknown_timezone(config_service):
+    cfg = config_service.create_configuration("To Edit", timezone="Europe/Berlin")
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        config_service.update_configuration(cfg.id, timezone="Mars/Olympus")
+    assert config_service.get_configuration(cfg.id).timezone == "Europe/Berlin"
+
+
+def test_align_configuration_geo_to_country(config_service):
+    cfg = config_service.create_configuration(
+        "Misaligned", language="de", locale="de-DE", timezone="Europe/Berlin"
+    )
+    fixed = config_service.align_configuration_geo(cfg.id, "us")
+    assert fixed.timezone == "America/New_York"
+    assert fixed.locale == "en-US"
+    assert fixed.language == "en"
+
+
+def test_align_configuration_geo_unknown_country(config_service):
+    cfg = config_service.create_configuration("No Country")
+    with pytest.raises(ValueError, match="Unknown country"):
+        config_service.align_configuration_geo(cfg.id, "XX")

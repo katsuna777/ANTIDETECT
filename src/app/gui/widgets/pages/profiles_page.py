@@ -293,11 +293,75 @@ class ProfilesPage(PlaceholderPage):
             on_result=lambda profile: self._result.setText(
                 f"Profile {profile.id} · {profile.status.value}"
             ),
-            on_error=lambda exc: show_error(self, exc),
+            on_error=lambda exc: self._lifecycle_error(action, profile_id, exc),
             on_finished=lambda: (
                 self.reload(),
                 [w.setEnabled(True) for w in group],
             ),
+        )
+
+    def _lifecycle_error(self, action: str, profile_id: int, exc: object) -> None:
+        """Start/restart failure: offer one-click geo auto-fix on mismatch.
+
+        When the doctor blocks the launch with ``geo-timezone-mismatch`` the
+        error dialog gains a "Fix timezone automatically" button that aligns
+        the configuration to the proxy exit country (timezone + locale +
+        language) so the next launch passes the gate.
+        """
+        if action in ("start", "restart"):
+            fix = self._geo_autofix(profile_id)
+            if fix is not None:
+                configuration_id, country = fix
+                show_error(
+                    self,
+                    exc,
+                    actions=[
+                        (
+                            "Fix timezone automatically",
+                            lambda: self._apply_geo_autofix(
+                                configuration_id, country
+                            ),
+                        )
+                    ],
+                )
+                return
+        show_error(self, exc)
+
+    def _geo_autofix(self, profile_id: int) -> tuple[int, str] | None:
+        """(configuration_id, proxy_country) for a timezone-blocked profile.
+
+        Returns None when the failure is anything else (or the facts needed
+        for the fix are unavailable) — then the dialog stays a plain error.
+        """
+        try:
+            profile = self._container.profiles.get_profile(profile_id)
+            report = self._container.profiles.diagnose_profile(
+                profile_id, probe_google=False
+            )
+        except Exception:  # noqa: BLE001 - diagnostics must never hide the error
+            return None
+        if not any(block.code == "geo-timezone-mismatch" for block in report.blocks):
+            return None
+        country = (report.facts.get("proxy_country") or "").upper() or None
+        configuration_id = profile.configuration_id if profile is not None else None
+        if not country or configuration_id is None:
+            return None
+        return configuration_id, country
+
+    def _apply_geo_autofix(self, configuration_id: int, country: str) -> None:
+        self._result.setText(
+            f"Aligning configuration #{configuration_id:03d} to {country}…"
+        )
+        self._runner.submit(
+            workers.tasks.align_configuration_geo(
+                self._container, configuration_id, country
+            ),
+            on_result=lambda cfg: self._result.setText(
+                f"Timezone auto-fixed to {cfg.timezone} ({cfg.locale}). "
+                "Start the profile again."
+            ),
+            on_error=lambda exc: show_error(self, exc),
+            on_finished=self.reload,
         )
 
     # ------------------------------------------------------------ results

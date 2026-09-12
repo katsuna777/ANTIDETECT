@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.gui import workers
+from app.gui.dialogs.config_dialog import ConfigDialog
 from app.gui.dialogs.error_dialog import show_error
 from app.gui.widgets.placeholder_page import PlaceholderPage
 
@@ -64,6 +65,11 @@ class ConfigurationsPage(PlaceholderPage):
         self._generate = QPushButton("GENERATE")
         self._generate.setObjectName("PrimaryButton")
         self._generate.setToolTip("Generate a coherent fingerprint with the knobs on the left")
+        self._new = QPushButton("NEW CUSTOM")
+        self._new.setToolTip("Create a custom configuration by hand (timezone picker included)")
+        self._edit = QPushButton("EDIT")
+        self._edit.setToolTip("Edit the selected configuration")
+        self._edit.setEnabled(False)
         self._delete = QPushButton("DELETE")
         self._delete.setObjectName("DangerButton")
         self._delete.setToolTip("Delete the selected configuration")
@@ -73,6 +79,8 @@ class ConfigurationsPage(PlaceholderPage):
             QLabel("Platform"), self._platform,
             QLabel("Screen"), self._resolution,
             self._generate,
+            self._new,
+            self._edit,
             self._delete,
         )
         self.add_widget(
@@ -88,6 +96,8 @@ class ConfigurationsPage(PlaceholderPage):
         self.add_control_row(self._result)
 
         self._generate.clicked.connect(self._generate_config)
+        self._new.clicked.connect(self._new_config)
+        self._edit.clicked.connect(self._edit_config)
         self._delete.clicked.connect(self._delete_config)
         self._list.itemSelectionChanged.connect(self._sync_buttons)
         self.reload()
@@ -131,7 +141,55 @@ class ConfigurationsPage(PlaceholderPage):
             ),
             on_result=self._apply_generated,
             on_error=lambda exc: show_error(self, exc),
-            on_finished=lambda: self._generate.setEnabled(True),
+            on_finished=lambda: self._reload_and_enable(
+                [self._generate, self._edit, self._delete]
+            ),
+        )
+
+    def _new_config(self) -> None:
+        dialog = ConfigDialog(parent=self)
+        if dialog.exec() != ConfigDialog.DialogCode.Accepted:
+            return
+        values = dialog.values()
+        name = values.pop("name")
+        self._result.setText(f"Creating configuration {name!r}…")
+        self._runner.submit(
+            workers.tasks.create_configuration(self._container, name, **values),
+            on_result=lambda cfg: self._result.setText(
+                f"Created #{cfg.id} · {cfg.name} · {cfg.timezone or 'no timezone'}"
+            ),
+            on_error=lambda exc: show_error(self, exc),
+            on_finished=self.reload,
+        )
+
+    def _edit_config(self) -> None:
+        configuration_id = self._selected_id()
+        if configuration_id is None:
+            return
+        self._result.setText(f"Loading configuration #{configuration_id:03d}…")
+        self._runner.submit(
+            workers.tasks.get_configuration(self._container, configuration_id),
+            on_result=self._open_edit_dialog,
+            on_error=lambda exc: show_error(self, exc),
+        )
+
+    def _open_edit_dialog(self, config: object) -> None:
+        dialog = ConfigDialog(config, parent=self)
+        if dialog.exec() != ConfigDialog.DialogCode.Accepted:
+            self._result.setText("Edit cancelled.")
+            return
+        values = dialog.values()
+        name = values.pop("name")
+        self._result.setText(f"Saving configuration #{config.id:03d}…")
+        self._runner.submit(
+            workers.tasks.update_configuration(
+                self._container, config.id, name=name, **values
+            ),
+            on_result=lambda cfg: self._result.setText(
+                f"Updated #{cfg.id} · {cfg.name} · {cfg.timezone or 'no timezone'}"
+            ),
+            on_error=lambda exc: show_error(self, exc),
+            on_finished=self.reload,
         )
 
     def _delete_config(self) -> None:
@@ -167,7 +225,9 @@ class ConfigurationsPage(PlaceholderPage):
             widget.setEnabled(True)
 
     def _sync_buttons(self) -> None:
-        self._delete.setEnabled(self._selected_id() is not None)
+        selected = self._selected_id() is not None
+        self._edit.setEnabled(selected)
+        self._delete.setEnabled(selected)
 
     def _selected_id(self) -> int | None:
         item = self._list.currentItem()

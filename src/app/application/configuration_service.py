@@ -47,6 +47,7 @@ class ConfigurationService:
     ) -> BrowserConfiguration:
         name = self._normalize_name(name)
         self._reject_duplicate_name(name)
+        self._validate_timezone(params.get("timezone"))
         self._validate_spoof_fields(None, params)
         return self._configurations.create(name=name, **params)
 
@@ -62,11 +63,58 @@ class ConfigurationService:
             name = self._normalize_name(name)
             if name != current.name:
                 self._reject_duplicate_name(name)
+        if "timezone" in params:
+            self._validate_timezone(params["timezone"])
         self._validate_spoof_fields(current, params)
         updated = self._configurations.update(configuration_id, name=name, **params)
         if updated is None:
             raise BrowserConfigurationNotFoundError(configuration_id)
         return updated
+
+    def align_configuration_geo(
+        self, configuration_id: int, country_code: str
+    ) -> BrowserConfiguration:
+        """Auto-fix a configuration's geo fields to a proxy exit country.
+
+        Sets timezone + locale + language to the country's defaults so the
+        doctor geo-gate (exit == timezone == locale) passes. Raises
+        ValueError for countries without known defaults.
+        """
+        from app.application.configuration_generator import country_defaults
+
+        code = (country_code or "").strip().upper()
+        defaults = country_defaults(code)
+        if defaults is None:
+            raise ValueError(
+                f"Unknown country {country_code!r}: no known language/locale/timezone. "
+                "Pick the timezone manually from the supported list."
+            )
+        language, locale, timezone = defaults
+        return self.update_configuration(
+            configuration_id,
+            language=language,
+            locale=locale,
+            timezone=timezone,
+        )
+
+    @staticmethod
+    def _validate_timezone(timezone: Any) -> None:
+        """Reject timezones the doctor cannot map to an exit country.
+
+        Runs on every create/update (even without a User-Agent), so a typo
+        like ``UTC+3`` or ``Moscow`` fails fast with the full supported
+        list instead of surfacing later as a doctor BLOCKED at launch.
+        """
+        from app.application.profile_doctor import SUPPORTED_TIMEZONES
+
+        if timezone is None:
+            return
+        if timezone in SUPPORTED_TIMEZONES:
+            return
+        raise ValueError(
+            f"Unknown timezone {timezone!r}. "
+            f"Supported timezones: {', '.join(SUPPORTED_TIMEZONES)}"
+        )
 
     @staticmethod
     def _validate_spoof_fields(

@@ -139,6 +139,41 @@ def delete_configuration(
     return run
 
 
+def create_configuration(
+    factory_container: "Container", name: str, **params
+) -> TaskFunction:
+    def run(progress: ProgressCallback):
+        return factory_container.configurations.create_configuration(
+            name, **params
+        )
+
+    return run
+
+
+def update_configuration(
+    factory_container: "Container", configuration_id: int, **params
+) -> TaskFunction:
+    def run(progress: ProgressCallback):
+        return factory_container.configurations.update_configuration(
+            configuration_id, **params
+        )
+
+    return run
+
+
+def align_configuration_geo(
+    factory_container: "Container", configuration_id: int, country_code: str
+) -> TaskFunction:
+    """Auto-fix a configuration's timezone/locale/language to a country."""
+
+    def run(progress: ProgressCallback):
+        return factory_container.configurations.align_configuration_geo(
+            configuration_id, country_code
+        )
+
+    return run
+
+
 def list_proxies(factory_container: "Container") -> TaskFunction:
     def run(progress: ProgressCallback):
         return factory_container.proxies.list_proxies()
@@ -149,6 +184,15 @@ def list_proxies(factory_container: "Container") -> TaskFunction:
 def list_configurations(factory_container: "Container") -> TaskFunction:
     def run(progress: ProgressCallback):
         return factory_container.configurations.list_configurations()
+
+    return run
+
+
+def get_configuration(
+    factory_container: "Container", configuration_id: int
+) -> TaskFunction:
+    def run(progress: ProgressCallback):
+        return factory_container.configurations.get_configuration(configuration_id)
 
     return run
 
