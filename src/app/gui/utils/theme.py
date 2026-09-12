@@ -413,6 +413,9 @@ QComboBox QAbstractItemView {
     border: 1px solid $ink;
     selection-background-color: $ink;
     selection-color: $selink;
+    /* The popup must never render narrower than readable text or with
+       collapsed rows, whatever the host style reports as content hints. */
+    min-width: 220px;
 }
 
 QCheckBox {
@@ -467,6 +470,7 @@ QListWidget, QListView, QTreeView {
 
 QListWidget::item, QListView::item {
     padding: 5px 10px;
+    min-height: 22px;
     border: none;
     border-bottom: 1px solid $faint;
     background: transparent;

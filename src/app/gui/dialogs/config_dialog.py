@@ -103,6 +103,9 @@ class ConfigDialog(QDialog):
         self._language.addItem("—")
         for language in SUPPORTED_LANGUAGES:
             self._language.addItem(language)
+        # The pool is small (25 entries): show all of them at once instead
+        # of Qt's default 10-rows-plus-scrollbar clipping.
+        self._language.setMaxVisibleItems(self._language.count())
         if not creating and config.language:
             if config.language in SUPPORTED_LANGUAGES:
                 self._select_text(self._language, config.language)

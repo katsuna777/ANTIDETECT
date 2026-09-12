@@ -186,3 +186,56 @@ def test_scrollbars_keep_gap_from_content(theme, accent):
     assert "margin: 0 0 0 8px" in qss
     assert "QScrollBar:horizontal" in qss
     assert "margin: 8px 0 0 0" in qss
+
+
+def test_combo_popups_cannot_render_narrow_or_collapsed():
+    """Regression: combo popups keep readable width/row height anywhere."""
+    qss = build_stylesheet(theme="light", accent="mono")
+    assert "min-width: 220px" in qss
+    assert "min-height: 22px" in qss
+
+
+def test_language_pool_shows_every_entry_at_once():
+    from app.gui.dialogs.config_dialog import ConfigDialog
+
+    dialog = ConfigDialog()
+    combo = dialog._language
+    try:
+        assert combo.maxVisibleItems() >= combo.count() >= 20
+    finally:
+        dialog.close()
+
+
+def test_popup_selection_text_stays_visible():
+    """Pixel check: the highlighted row keeps contrasting text.
+
+    Guards the "languages don't show" class of bugs: selection background
+    with invisible text looks like an empty black block.
+    """
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication
+
+    from app.gui.dialogs.config_dialog import ConfigDialog
+    from app.gui.utils.theme import apply_theme
+
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app, "light", "mono")
+    dialog = ConfigDialog()
+    try:
+        dialog.show()
+        dialog._language.showPopup()
+        app.processEvents()
+        image = dialog._language.view().grab().toImage()
+        assert image.width() >= 220
+        light = dark = 0
+        for y in range(0, min(34, image.height())):
+            for x in range(0, image.width(), 2):
+                lightness = QColor(image.pixel(x, y)).lightness()
+                if lightness > 150:
+                    light += 1
+                elif lightness <= 80:
+                    dark += 1
+        assert dark > 0, "expected the dark selection band"
+        assert light > 50, "selected-row text must contrast its background"
+    finally:
+        dialog.close()
