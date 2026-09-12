@@ -13,6 +13,7 @@ if [ ! -f "${SPEC}" ]; then
 fi
 
 "${PY}" -m pip install -r "${ROOT}/requirements-build.txt"
+"${PY}" "${ROOT}/scripts/check_build_env.py"
 mkdir -p "${ROOT}/release"
 rm -rf "${ROOT}/dist/Antidetect.app" "${ROOT}/release/Antidetect.dmg"
 

@@ -8,6 +8,7 @@ $PY = if ($env:PYBIN) { $env:PYBIN } else { "python" }
 if (-not (Test-Path $SPEC)) { Write-Error "spec not found: $SPEC"; exit 1 }
 
 & $PY -m pip install -r (Join-Path $ROOT "requirements-build.txt")
+& $PY (Join-Path $ROOT "scripts\check_build_env.py")
 New-Item -ItemType Directory -Force -Path (Join-Path $ROOT "release") | Out-Null
 $exe = Join-Path $ROOT "dist\Antidetect.exe"
 if (Test-Path $exe) { Remove-Item $exe -Force }
