@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-REQUIRED = ("websocket", "platformdirs", "PySide6")
+REQUIRED = ("websocket", "platformdirs", "PySide6", "certifi")
 
 
 def main() -> int:

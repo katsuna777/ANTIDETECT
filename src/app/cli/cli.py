@@ -231,6 +231,9 @@ def _add_config_fields(parser) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from app._frozen import ensure_ssl_certs
+
+    ensure_ssl_certs()
     parser = build_parser()
     args = parser.parse_args(argv)
 

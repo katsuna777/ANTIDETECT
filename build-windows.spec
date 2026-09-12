@@ -28,6 +28,17 @@ if (RES / "icon.icns").is_file():
 if ICON_ICO.is_file():
     datas.append((str(ICON_ICO), "app/gui/resources"))
 
+# certifi is a hard requirement: without its CA bundle every https:// fetch
+# (proxy sources) fails verification on user machines, whose OpenSSL paths
+# differ from the build machine's. Fail loudly here, not silently at runtime.
+try:
+    import certifi as _certifi
+except ImportError as _exc:
+    raise SystemExit(
+        "certifi is required for the build (pip install -r requirements-build.txt)"
+    ) from _exc
+datas.append((_certifi.where(), "certifi"))
+
 # Migration modules are loaded dynamically via importlib (see
 # app/infrastructure/database/migrations/__init__.py) so PyInstaller's
 # static analysis misses them — list explicitly (glob = future-proof).
@@ -49,6 +60,7 @@ a = Analysis(
         "PySide6.QtWidgets",
         "platformdirs",
         "websocket",
+        "certifi",
         "app.infrastructure.database.migrations.versions",
         *migration_modules,
     ],

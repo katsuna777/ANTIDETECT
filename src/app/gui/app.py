@@ -91,6 +91,9 @@ def run_app(
 
 def main() -> int:
     """``python -m app.gui`` entry point: bootstrap and run the GUI."""
+    from app._frozen import ensure_ssl_certs
+
+    ensure_ssl_certs()
     return run_app(bootstrap())
 
 

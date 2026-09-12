@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sys
 
-REQUIRED = ("websocket", "platformdirs", "PySide6")
+REQUIRED = ("websocket", "platformdirs", "PySide6", "certifi")
 
 
 def main() -> int:

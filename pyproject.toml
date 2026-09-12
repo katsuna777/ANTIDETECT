@@ -7,7 +7,7 @@ name = "antidetect"
 version = "0.1.0"
 description = "Antidetect browser — independent Chromium profiles with SQLite-backed state"
 requires-python = ">=3.12"
-dependencies = ["websocket-client>=1.8", "platformdirs>=4", "PySide6>=6.6"]
+dependencies = ["websocket-client>=1.8", "platformdirs>=4", "PySide6>=6.6", "certifi>=2024.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

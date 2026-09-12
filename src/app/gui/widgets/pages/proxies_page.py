@@ -74,6 +74,7 @@ class ProxiesPage(PlaceholderPage):
         self.add_widget(self._live, 1)
 
         self._result = QLabel("Idle.")
+        self._result.setWordWrap(True)
         self._result.setObjectName("ResultLabel")
         self.add_control_row(self._result)
 
@@ -227,11 +228,18 @@ class ProxiesPage(PlaceholderPage):
         removed = getattr(summary, "removed", 0)
         stopped = self._stop_event is not None and self._stop_event.is_set()
         prefix = "Stopped" if stopped else "Checked"
-        self._result.setText(
+        line = (
             f"{prefix} {summary.checked} · working {summary.working} · "
-            f"failed {summary.failed} · removed {removed} "
-            f"({summary.elapsed_seconds:.1f}s)"
+            f"failed {summary.failed} · removed {removed}"
         )
+        collected = getattr(summary, "collected", None)
+        if collected is not None:
+            line += f" · collected {collected}"
+        line += f" ({summary.elapsed_seconds:.1f}s)"
+        source_errors = list(getattr(summary, "source_errors", None) or [])
+        if source_errors:
+            line += " · Sources failed: " + "; ".join(source_errors)
+        self._result.setText(line)
         self.reload()
 
     def _reset_busy(self) -> None:

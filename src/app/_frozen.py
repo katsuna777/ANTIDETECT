@@ -38,3 +38,38 @@ def resource_path(*parts: str) -> Path:
     # src/app/_frozen.py -> src/
     src_dir = here.parents[1]
     return src_dir.joinpath(*parts)
+
+
+def bundled_cafile() -> str | None:
+    """Locate a CA bundle for TLS verification, frozen or not.
+
+    The frozen app must never rely on the build machine's OpenSSL paths
+    (e.g. ``/opt/homebrew/etc/openssl@3/cert.pem``): they do not exist on
+    user machines, so every ``https://`` fetch would fail verification.
+    We ship ``certifi/cacert.pem`` as bundle data and prefer it there.
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidate = Path(meipass) / "certifi" / "cacert.pem"
+        if candidate.is_file():
+            return str(candidate)
+    try:
+        import certifi
+    except ImportError:
+        return None
+    candidate = Path(certifi.where())
+    return str(candidate) if candidate.is_file() else None
+
+
+def ensure_ssl_certs() -> None:
+    """Point the process at a valid CA bundle before any HTTPS I/O.
+
+    Safe to call in development too; a no-op when no bundle is found.
+    Must run before the first ``ssl`` context is created (i.e. at the top
+    of every entry point). ``urllib``/``ssl`` honour ``SSL_CERT_FILE``.
+    """
+    import os
+
+    cafile = bundled_cafile()
+    if cafile:
+        os.environ.setdefault("SSL_CERT_FILE", cafile)
