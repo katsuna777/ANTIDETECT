@@ -79,7 +79,19 @@ class SettingsPage(PlaceholderPage):
         self._theme_combo.setCurrentIndex(1 if current == "dark" else 0)
         self._theme_combo.currentIndexChanged.connect(self._apply_theme_choice)
         appearance_layout.addWidget(self._theme_combo)
-        appearance_hint = QLabel("Monochrome in both modes · 1px hairlines · one family, one weight.")
+        self._accent_combo = QComboBox()
+        self._accent_combo.addItem("Mono · strict ledger", "mono")
+        self._accent_combo.addItem("Yellow accent", "yellow")
+        self._accent_combo.addItem("Blue accent", "blue")
+        self._accent_combo.addItem("Green accent", "green")
+        self._accent_combo.setToolTip(
+            "Accent foreground: replaces the black/white ink, paper background stays. Saved in gui.accent."
+        )
+        accent_index = list(Preferences.ACCENTS).index(self._prefs.get_accent())
+        self._accent_combo.setCurrentIndex(accent_index)
+        self._accent_combo.currentIndexChanged.connect(self._apply_accent_choice)
+        appearance_layout.addWidget(self._accent_combo)
+        appearance_hint = QLabel("Background stays paper/ink · only the foreground accent changes.")
         appearance_hint.setObjectName("HintLabel")
         appearance_hint.setWordWrap(True)
         appearance_layout.addWidget(appearance_hint)
@@ -109,9 +121,21 @@ class SettingsPage(PlaceholderPage):
     def _apply_theme_choice(self) -> None:
         theme = self._theme_combo.currentData() or "light"
         self._prefs.set_theme(str(theme))
+        self._apply_current_look()
+
+    def _apply_accent_choice(self) -> None:
+        accent = self._accent_combo.currentData() or "mono"
+        self._prefs.set_accent(str(accent))
+        self._apply_current_look()
+
+    def _apply_current_look(self) -> None:
         app = QApplication.instance()
         if app is not None:
-            apply_theme(app, str(theme))
+            from app.gui.utils.theme import current_accent
+
+            theme = self._prefs.get_theme()
+            accent = self._prefs.get_accent(current_accent(app))
+            apply_theme(app, theme, accent)
 
     def _toggle_theme_button(self) -> None:
         window = self.window()

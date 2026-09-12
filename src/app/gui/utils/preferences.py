@@ -33,8 +33,14 @@ class Preferences:
     KEY_WINDOW_GEOMETRY = "gui.window_geometry"
     KEY_CONFIRM_DESTRUCTIVE = "gui.confirm_destructive"
     KEY_THEME = "gui.theme"
+    KEY_ACCENT = "gui.accent"
     THEME_LIGHT = "light"
     THEME_DARK = "dark"
+    ACCENT_MONO = "mono"
+    ACCENT_YELLOW = "yellow"
+    ACCENT_BLUE = "blue"
+    ACCENT_GREEN = "green"
+    ACCENTS = (ACCENT_MONO, ACCENT_YELLOW, ACCENT_BLUE, ACCENT_GREEN)
 
     def __init__(self, settings: SettingsRepository) -> None:
         self._settings = settings
@@ -73,6 +79,21 @@ class Preferences:
         if normalized not in (self.THEME_LIGHT, self.THEME_DARK):
             normalized = self.THEME_LIGHT
         self.set(self.KEY_THEME, normalized)
+
+    # ------------------------------------------------------------- accent
+
+    def get_accent(self, default: str = ACCENT_MONO) -> str:
+        """Stored accent foreground (mono/yellow/blue/green)."""
+        raw = self.get(self.KEY_ACCENT).strip().lower()
+        if raw in self.ACCENTS:
+            return raw
+        return default
+
+    def set_accent(self, accent: str) -> None:
+        normalized = accent.strip().lower()
+        if normalized not in self.ACCENTS:
+            normalized = self.ACCENT_MONO
+        self.set(self.KEY_ACCENT, normalized)
 
     # ---------------------------------------------------------- geometry
 

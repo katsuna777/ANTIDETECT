@@ -59,3 +59,38 @@ def test_geo_autofix_ignores_other_errors(gui_container, monkeypatch):
     )
     page = _page(gui_container)
     assert page._geo_autofix(profile.id) is None
+    assert page._autofix_offer(profile.id) is None
+
+
+def _drift_report():
+    return DoctorReport(
+        ok=False,
+        blocks=[
+            DoctorFinding(
+                "block",
+                "ua-binary-drift",
+                "User-Agent Chrome/150 vs installed Chrome/152",
+                "Regenerate for Chrome/152",
+            )
+        ],
+        facts={"binary_major": 152},
+    )
+
+
+def test_autofix_offer_regenerates_for_installed_chrome(
+    gui_container, monkeypatch
+):
+    cfg = gui_container.configurations.create_configuration("drifted")
+    profile = gui_container.profiles.create_profile(
+        "drifted-profile", configuration_id=cfg.id
+    )
+    monkeypatch.setattr(
+        gui_container.profiles,
+        "diagnose_profile",
+        lambda profile_id, probe_google=True: _drift_report(),
+    )
+    page = _page(gui_container)
+    offer = page._autofix_offer(profile.id)
+    assert offer is not None
+    label, _apply = offer
+    assert "Chrome/152" in label

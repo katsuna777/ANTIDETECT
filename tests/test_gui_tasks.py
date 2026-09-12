@@ -184,3 +184,30 @@ def test_get_configuration_task(gui_container):
     loaded = _run(tasks.get_configuration(gui_container, cfg.id))
     assert loaded.id == cfg.id
     assert loaded.name == "task-get"
+
+
+def test_align_browser_version_task(gui_container):
+    from app.application.configuration_generator import build_client_hints
+
+    cfg = _run(
+        tasks.create_configuration(
+            gui_container,
+            "task-drift",
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+            ),
+            platform="windows",
+            client_hints=build_client_hints("chrome", "windows", "150.0.0.0"),
+        )
+    )
+    fixed = _run(tasks.align_browser_version(gui_container, cfg.id, 152))
+    assert "Chrome/152." in fixed.user_agent
+
+
+def test_generate_with_timezone_pins_geo_trio(gui_container):
+    cfg = _run(
+        tasks.generate_configuration_with_size(gui_container, timezone="Asia/Tokyo")
+    )
+    assert cfg.timezone == "Asia/Tokyo"
+    assert cfg.locale == "ja-JP"

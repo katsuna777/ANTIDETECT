@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.gui.utils.flow_layout import make_flow_row
+
 
 class Metric(QWidget):
     """A value + oversized label pair shown on the metric strip."""
@@ -124,6 +126,16 @@ class PlaceholderPage(QWidget):
             row.addWidget(widget)
         if stretch:
             row.addStretch(1)
+        self._body.addLayout(row)
+        return row
+
+    def add_flow_row(self, *widgets: QWidget, spacing: int = 12):
+        """Pack a wrapping row: items flow to the next line on narrow windows.
+
+        Use for long control strips ( Combos + buttons) so nothing slides
+        off-screen — the horizontal scrollbar is disabled on every page.
+        """
+        row = make_flow_row(*widgets, spacing=spacing)
         self._body.addLayout(row)
         return row
 

@@ -301,31 +301,55 @@ class ProfilesPage(PlaceholderPage):
         )
 
     def _lifecycle_error(self, action: str, profile_id: int, exc: object) -> None:
-        """Start/restart failure: offer one-click geo auto-fix on mismatch.
+        """Start/restart failure: offer one-click auto-fixes when available.
 
-        When the doctor blocks the launch with ``geo-timezone-mismatch`` the
-        error dialog gains a "Fix timezone automatically" button that aligns
-        the configuration to the proxy exit country (timezone + locale +
-        language) so the next launch passes the gate.
+        * ``geo-timezone-mismatch`` -> "Fix timezone automatically" (aligns
+          the configuration to the proxy exit country);
+        * ``ua-binary-drift`` -> "Regenerate for Chrome/<installed>
+          automatically" (rebuilds UA + Client Hints for the binary).
+        Anything else stays a plain error dialog.
         """
         if action in ("start", "restart"):
-            fix = self._geo_autofix(profile_id)
-            if fix is not None:
-                configuration_id, country = fix
-                show_error(
-                    self,
-                    exc,
-                    actions=[
-                        (
-                            "Fix timezone automatically",
-                            lambda: self._apply_geo_autofix(
-                                configuration_id, country
-                            ),
-                        )
-                    ],
-                )
+            offer = self._autofix_offer(profile_id)
+            if offer is not None:
+                label, apply = offer
+                show_error(self, exc, actions=[(label, apply)])
                 return
         show_error(self, exc)
+
+    def _autofix_offer(self, profile_id: int):
+        """(button_label, apply_callback) for a blocked launch, or None."""
+        try:
+            profile = self._container.profiles.get_profile(profile_id)
+            report = self._container.profiles.diagnose_profile(
+                profile_id, probe_google=False
+            )
+        except Exception:  # noqa: BLE001 - diagnostics must never hide the error
+            return None
+        if profile is None or profile.configuration_id is None:
+            return None
+        configuration_id = profile.configuration_id
+        codes = {block.code for block in report.blocks}
+        if "geo-timezone-mismatch" in codes:
+            country = (report.facts.get("proxy_country") or "").upper() or None
+            if country:
+                return (
+                    "Fix timezone automatically",
+                    lambda: self._apply_geo_autofix(configuration_id, country),
+                )
+        if "ua-binary-drift" in codes:
+            try:
+                major = int(report.facts.get("binary_major"))
+            except (TypeError, ValueError):
+                major = None
+            if major:
+                return (
+                    f"Regenerate for Chrome/{major} automatically",
+                    lambda: self._apply_version_autofix(
+                        configuration_id, major
+                    ),
+                )
+        return None
 
     def _geo_autofix(self, profile_id: int) -> tuple[int, str] | None:
         """(configuration_id, proxy_country) for a timezone-blocked profile.
@@ -358,6 +382,23 @@ class ProfilesPage(PlaceholderPage):
             ),
             on_result=lambda cfg: self._result.setText(
                 f"Timezone auto-fixed to {cfg.timezone} ({cfg.locale}). "
+                "Start the profile again."
+            ),
+            on_error=lambda exc: show_error(self, exc),
+            on_finished=self.reload,
+        )
+
+    def _apply_version_autofix(self, configuration_id: int, major: int) -> None:
+        self._result.setText(
+            f"Regenerating configuration #{configuration_id:03d} "
+            f"for Chrome/{major}…"
+        )
+        self._runner.submit(
+            workers.tasks.align_browser_version(
+                self._container, configuration_id, major
+            ),
+            on_result=lambda cfg: self._result.setText(
+                f"Browser version auto-fixed to Chrome/{major}. "
                 "Start the profile again."
             ),
             on_error=lambda exc: show_error(self, exc),

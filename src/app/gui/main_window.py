@@ -88,7 +88,11 @@ class MainWindow(QMainWindow):
             stored = self._prefs.get_theme(current_theme(QApplication.instance()))
             app = QApplication.instance()
             if app is not None:
-                apply_theme(app, stored)
+                from app.gui.utils.theme import current_accent
+
+                apply_theme(
+                    app, stored, self._prefs.get_accent(current_accent(app))
+                )
             self._sidebar.set_theme_label(stored)
         except Exception:
             pass

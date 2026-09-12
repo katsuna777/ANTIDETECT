@@ -208,3 +208,41 @@ def test_align_configuration_geo_unknown_country(config_service):
     cfg = config_service.create_configuration("No Country")
     with pytest.raises(ValueError, match="Unknown country"):
         config_service.align_configuration_geo(cfg.id, "XX")
+
+
+def _chrome_cfg(config_service, major=150, name="Drifted"):
+    from app.application.configuration_generator import build_client_hints
+
+    return config_service.create_configuration(
+        name,
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            f"(KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
+        ),
+        platform="windows",
+        client_hints=build_client_hints("chrome", "windows", f"{major}.0.0.0"),
+    )
+
+
+def test_align_browser_version_rebuilds_ua_and_hints(config_service):
+    cfg = _chrome_cfg(config_service)
+    fixed = config_service.align_browser_version(cfg.id, 152)
+    assert "Chrome/152." in fixed.user_agent
+    assert "Chrome/150." not in fixed.user_agent
+    assert fixed.client_hints["fullVersion"].startswith("152.")
+    assert fixed.client_hints["brands"][0]["version"] == "152"
+    # Still internally consistent (UA major == hints major).
+    reloaded = config_service.get_configuration(cfg.id)
+    assert reloaded.user_agent == fixed.user_agent
+
+
+def test_align_browser_version_same_major_is_noop(config_service):
+    cfg = _chrome_cfg(config_service)
+    same = config_service.align_browser_version(cfg.id, 150)
+    assert same.user_agent == cfg.user_agent
+
+
+def test_align_browser_version_without_chrome_ua_raises(config_service):
+    cfg = config_service.create_configuration("No UA")
+    with pytest.raises(ValueError, match="no Chrome User-Agent"):
+        config_service.align_browser_version(cfg.id, 152)

@@ -116,6 +116,66 @@ class ConfigurationService:
             f"Supported timezones: {', '.join(SUPPORTED_TIMEZONES)}"
         )
 
+    def align_browser_version(
+        self, configuration_id: int, major: int
+    ) -> BrowserConfiguration:
+        """Auto-fix a UA/binary drift: rebuild UA + Client Hints for ``major``.
+
+        Used by the one-click fix offered when the doctor blocks a launch
+        with ``ua-binary-drift`` (fingerprint says Chrome/150, installed
+        binary is Chrome/152). Raises ValueError when the stored
+        configuration has no Chrome User-Agent to patch.
+        """
+        import re
+
+        from app.application.configuration_generator import (
+            build_client_hints,
+            chrome_major,
+            ua_chrome_major,
+        )
+
+        current = self.get_configuration(configuration_id)
+        old_major = ua_chrome_major(current.user_agent or "")
+        if old_major is None:
+            raise ValueError(
+                "Configuration has no Chrome User-Agent to align; "
+                "regenerate it instead."
+            )
+        major = int(major)
+        if major == old_major:
+            return current
+        hints = dict(current.client_hints or {})
+        base_version = str(hints.get("fullVersion") or "")
+        if chrome_major(base_version) == old_major and "." in base_version:
+            version = f"{major}." + base_version.split(".", 1)[1]
+        else:
+            version = f"{major}.0.0.0"
+        user_agent = re.sub(
+            r"Chrome/\d+\.", f"Chrome/{major}.", current.user_agent or ""
+        )
+        user_agent = re.sub(r"Edg/\d+\.", f"Edg/{major}.", user_agent)
+        browser = "edge" if "Edg/" in user_agent else "chrome"
+        platform = current.platform
+        if platform not in ("windows", "macos", "linux"):
+            platform = _infer_platform(user_agent)
+        if platform is not None:
+            client_hints: Any = build_client_hints(browser, platform, version)
+        else:
+            client_hints = dict(hints)
+            client_hints["fullVersion"] = version
+            patched_brands = []
+            for brand in client_hints.get("brands") or []:
+                brand = dict(brand)
+                if brand.get("brand") != "Not-A.Brand":
+                    brand["version"] = str(major)
+                patched_brands.append(brand)
+            client_hints["brands"] = patched_brands
+        return self.update_configuration(
+            configuration_id,
+            user_agent=user_agent,
+            client_hints=client_hints,
+        )
+
     @staticmethod
     def _validate_spoof_fields(
         current: BrowserConfiguration | None, params: dict[str, Any]
@@ -227,3 +287,15 @@ class ConfigurationService:
             candidate = f"{base}-{index}"
             index += 1
         return candidate
+
+
+def _infer_platform(user_agent: str) -> str | None:
+    """Guess windows/macos/linux from a User-Agent string (best effort)."""
+    ua = user_agent or ""
+    if "Windows NT" in ua:
+        return "windows"
+    if "Macintosh" in ua:
+        return "macos"
+    if "Linux" in ua or "X11" in ua:
+        return "linux"
+    return None

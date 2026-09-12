@@ -55,7 +55,9 @@ def run_app(
         from app.gui.utils.preferences import Preferences
 
         stored = Preferences(container.settings).get_theme()
-        apply_theme(app, stored)
+        from app.gui.utils.theme import current_accent
+
+        apply_theme(app, stored, Preferences(container.settings).get_accent(current_accent(app)))
     except Exception:
         pass
 

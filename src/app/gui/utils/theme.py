@@ -30,6 +30,20 @@ from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 ThemeName = Literal["light", "dark"]
+AccentName = Literal["mono", "yellow", "blue", "green"]
+
+#: Accent foregrounds. ``mono`` keeps the strict black-on-white /
+#: white-on-black ledger; any other accent replaces the foreground ink
+#: (text, borders, fills) while the paper background never changes.
+ACCENTS: dict[str, str | None] = {
+    "mono": None,
+    "yellow": "#FFD60A",
+    "blue": "#3B9DFF",
+    "green": "#35D07F",
+}
+
+_ACCENT_SELECTION_DARK = "#0e0e0e"  # text on accent fills, dark theme
+_ACCENT_SELECTION_LIGHT = "#111111"  # text on accent fills, light theme
 
 
 @dataclass(frozen=True)
@@ -78,8 +92,47 @@ def normalize_theme(name: str | None) -> ThemeName:
     return "light"
 
 
-def palette_for(name: str | None) -> Palette:
-    return THEMES[normalize_theme(name)]
+def normalize_accent(name: str | None) -> AccentName:
+    """Stored accent color; unknown values fall back to strict monochrome."""
+    normalized = (name or "mono").strip().lower()
+    if normalized in ("yellow", "blue", "green"):
+        return normalized  # type: ignore[return-value]
+    return "mono"
+
+
+def _accent_rgba(accent_hex: str, alpha_percent: int) -> str:
+    """``#RRGGBB`` + alpha percent -> ``rgba(r, g, b, a%)`` for muted/faint."""
+    hex_clean = accent_hex.lstrip("#")
+    red = int(hex_clean[0:2], 16)
+    green = int(hex_clean[2:4], 16)
+    blue = int(hex_clean[4:6], 16)
+    return f"rgba({red}, {green}, {blue}, {alpha_percent}%)"
+
+
+def palette_for(name: str | None, accent: str | None = None) -> Palette:
+    """Palette for theme, optionally re-inked with an accent foreground."""
+    theme = normalize_theme(name)
+    base = THEMES[theme]
+    accent_name = normalize_accent(accent)
+    accent_hex = ACCENTS[accent_name]
+    if accent_hex is None:
+        return base
+    if theme == "dark":
+        muted, faint = _accent_rgba(accent_hex, 55), _accent_rgba(accent_hex, 22)
+        selection_ink = _ACCENT_SELECTION_DARK
+    else:
+        muted, faint = _accent_rgba(accent_hex, 45), _accent_rgba(accent_hex, 25)
+        selection_ink = _ACCENT_SELECTION_LIGHT
+    return Palette(
+        name=base.name,
+        ink=accent_hex,
+        paper=base.paper,
+        muted=muted,
+        faint=faint,
+        selection_ink=selection_ink,
+        splash_bg=base.splash_bg,
+        splash_fg=base.splash_fg,
+    )
 
 # --------------------------------------------------------------------------- #
 # Tokens (light defaults — kept for backwards compatibility)
@@ -532,9 +585,13 @@ QGroupBox::title {
 """
 )
 
-def build_stylesheet(family: str | None = None, theme: str | None = None) -> str:
-    """Render the style sheet for theme ("light"/"dark")."""
-    pal = palette_for(theme)
+def build_stylesheet(
+    family: str | None = None,
+    theme: str | None = None,
+    accent: str | None = None,
+) -> str:
+    """Render the style sheet for theme ("light"/"dark") + accent."""
+    pal = palette_for(theme, accent)
     return _QSS_TEMPLATE.substitute(
         font=font_stack(family),
         ink=pal.ink,
@@ -545,13 +602,17 @@ def build_stylesheet(family: str | None = None, theme: str | None = None) -> str
     )
 
 
-def apply_theme(app: QApplication, theme: str | None = None) -> str:
+def apply_theme(
+    app: QApplication, theme: str | None = None, accent: str | None = None
+) -> str:
     """Apply the global theme to ``app; returns the normalized name."""
     name = normalize_theme(theme)
+    accent_name = normalize_accent(accent)
     family = font_family()
-    app.setStyleSheet(build_stylesheet(family, name))
+    app.setStyleSheet(build_stylesheet(family, name, accent_name))
     try:
         app.setProperty("antidetectTheme", name)
+        app.setProperty("antidetectAccent", accent_name)
     except Exception:
         pass
     default = QFont(family, 13)
@@ -572,6 +633,22 @@ def current_theme(app: QApplication | None = None) -> str:
     return "light"
 
 
+def current_accent(app: QApplication | None = None) -> str:
+    """Best-effort current accent name (defaults to mono)."""
+    try:
+        if app is not None:
+            value = app.property("antidetectAccent")
+            if value in ("mono", "yellow", "blue", "green"):
+                return str(value)
+    except Exception:
+        pass
+    return "mono"
+
+
 def toggle_theme(app: QApplication) -> str:
-    """Flip light<->dark on app; returns the new theme."""
-    return apply_theme(app, "dark" if current_theme(app) != "dark" else "light")
+    """Flip light<->dark on app, keeping the accent; returns the new theme."""
+    return apply_theme(
+        app,
+        "dark" if current_theme(app) != "dark" else "light",
+        current_accent(app),
+    )

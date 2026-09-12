@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
+from app.application.profile_doctor import SUPPORTED_TIMEZONES
 from app.gui import workers
 from app.gui.dialogs.config_dialog import ConfigDialog
 from app.gui.dialogs.error_dialog import show_error
@@ -62,6 +63,21 @@ class ConfigurationsPage(PlaceholderPage):
         self._resolution = QComboBox()
         for label, _, _ in _RESOLUTIONS:
             self._resolution.addItem(label)
+        self._timezone_filter = QComboBox()
+        self._timezone_filter.setToolTip(
+            "Pin the generated fingerprint to this timezone's country "
+            "(timezone + locale + language are aligned, so the doctor stays green)"
+        )
+        self._timezone_filter.addItem("random", None)
+        for zone in SUPPORTED_TIMEZONES:
+            self._timezone_filter.addItem(zone, zone)
+        # The zone names are long ("America/Argentina/Buenos_Aires") — size
+        # the box to its short text, not the widest item, so the row stays
+        # compact. The popup still shows every full name.
+        self._timezone_filter.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self._timezone_filter.setMinimumContentsLength(14)
         self._generate = QPushButton("GENERATE")
         self._generate.setObjectName("PrimaryButton")
         self._generate.setToolTip("Generate a coherent fingerprint with the knobs on the left")
@@ -74,17 +90,22 @@ class ConfigurationsPage(PlaceholderPage):
         self._delete.setObjectName("DangerButton")
         self._delete.setToolTip("Delete the selected configuration")
         self._delete.setEnabled(False)
-        self.add_control_row(
+        # Wrapping rows: on narrow windows the knobs flow underneath
+        # instead of sliding off-screen (horizontal scroll is disabled).
+        self.add_flow_row(
             QLabel("Template"), self._template,
             QLabel("Platform"), self._platform,
             QLabel("Screen"), self._resolution,
+            QLabel("Timezone"), self._timezone_filter,
             self._generate,
+        )
+        self.add_flow_row(
             self._new,
             self._edit,
             self._delete,
         )
         self.add_widget(
-            self.make_hint("Template = base fingerprint · Platform/Screen = overrides (random = coherent pick).")
+            self.make_hint("Template = base fingerprint · Platform/Screen/Timezone = overrides (random = coherent pick). Timezone pins the whole geo trio, so the doctor stays green.")
         )
 
         self._list = QListWidget()
@@ -128,6 +149,7 @@ class ConfigurationsPage(PlaceholderPage):
         if platform == _RANDOM_PLATFORM:
             platform = None
         _, width, height = _RESOLUTIONS[self._resolution.currentIndex()]
+        timezone = self._timezone_filter.currentData()
 
         self._generate.setEnabled(False)
         self._result.setText("Generating a coherent fingerprint…")
@@ -138,6 +160,7 @@ class ConfigurationsPage(PlaceholderPage):
                 template=template,
                 screen_width=width,
                 screen_height=height,
+                timezone=timezone,
             ),
             on_result=self._apply_generated,
             on_error=lambda exc: show_error(self, exc),
@@ -267,6 +290,6 @@ class ConfigurationsPage(PlaceholderPage):
         self._result.setText(
             f"Created #{config.id} · {config.name} · {platform} · "
             f"{config.screen_width}×{config.screen_height} · "
-            f"{config.language_tag}"
+            f"{config.language_tag} · {config.timezone or 'no timezone'}"
         )
         self.reload()

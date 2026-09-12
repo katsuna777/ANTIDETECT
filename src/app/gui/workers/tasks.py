@@ -174,6 +174,19 @@ def align_configuration_geo(
     return run
 
 
+def align_browser_version(
+    factory_container: "Container", configuration_id: int, major: int
+) -> TaskFunction:
+    """Auto-fix a UA/binary drift: rebuild UA + Client Hints for ``major``."""
+
+    def run(progress: ProgressCallback):
+        return factory_container.configurations.align_browser_version(
+            configuration_id, major
+        )
+
+    return run
+
+
 def list_proxies(factory_container: "Container") -> TaskFunction:
     def run(progress: ProgressCallback):
         return factory_container.proxies.list_proxies()
@@ -356,6 +369,7 @@ def generate_configuration_with_size(
     template: str | None = None,
     screen_width: int | None = None,
     screen_height: int | None = None,
+    timezone: str | None = None,
 ) -> TaskFunction:
     def run(progress: ProgressCallback) -> object:
         config = factory_container.configurations.generate_configuration(
@@ -367,6 +381,14 @@ def generate_configuration_with_size(
                 screen_width=screen_width,
                 screen_height=screen_height,
             )
+        if timezone is not None:
+            from app.application.profile_doctor import TIMEZONE_COUNTRY
+
+            country = TIMEZONE_COUNTRY.get(timezone)
+            if country is not None:
+                config = factory_container.configurations.align_configuration_geo(
+                    config.id, country
+                )
         return config
 
     return run
