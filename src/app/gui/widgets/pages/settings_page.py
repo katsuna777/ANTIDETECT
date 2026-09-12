@@ -1,0 +1,121 @@
+"""Settings placeholder page.
+
+Shows the resolved runtime configuration plus the GUI prefs layer. Preference
+values round-trip through :class:`app.gui.utils.preferences.Preferences`, which
+persists them in the application's existing settings table — a live proof that
+the GUI never touches storage directly.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QGroupBox,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+)
+
+from app.gui.utils.preferences import Preferences
+from app.gui.utils.theme import apply_theme
+from app.gui.widgets.placeholder_page import PlaceholderPage
+
+if TYPE_CHECKING:
+    from app.di import Container
+
+
+class SettingsPage(PlaceholderPage):
+    def __init__(self, container: "Container", parent=None) -> None:
+        # Short page: no scroll area (everything visible at once).
+        super().__init__("Settings", kicker="SECTION 05", scroll=False)
+        self._container = container
+        self._prefs = Preferences(container.settings)
+
+        runtime_box = QGroupBox("1 · Runtime")
+        runtime_layout = QVBoxLayout(runtime_box)
+        runtime = QLabel(
+            f"data dir        {container.config.data_dir}\n"
+            f"database        {container.config.database_path}\n"
+            f"chromium        {container.config.chromium_path or 'auto (discovered at start)'}"
+        )
+        runtime.setObjectName("ResultLabel")
+        runtime.setWordWrap(True)
+        runtime.setTextInteractionFlags(
+            runtime.textInteractionFlags() | Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        runtime_layout.addWidget(runtime)
+        self.add_widget(runtime_box)
+
+        safety_box = QGroupBox("2 · Safety")
+        safety_layout = QVBoxLayout(safety_box)
+        self._confirm = QCheckBox("Confirm before destructive actions")
+        self._confirm.setToolTip("When off, DELETE and REFRESH POOL run immediately")
+        self._confirm.setChecked(
+            self._prefs.get_bool(Preferences.KEY_CONFIRM_DESTRUCTIVE, default=True)
+        )
+        self._confirm.toggled.connect(
+            lambda checked: self._prefs.set_bool(
+                Preferences.KEY_CONFIRM_DESTRUCTIVE, checked
+            )
+        )
+        safety_layout.addWidget(self._confirm)
+        safety_hint = QLabel("Covers profile delete, configuration delete and proxy pool refresh.")
+        safety_hint.setObjectName("HintLabel")
+        safety_layout.addWidget(safety_hint)
+        self.add_widget(safety_box)
+
+        appearance_box = QGroupBox("3 · Appearance")
+        appearance_layout = QVBoxLayout(appearance_box)
+        self._theme_combo = QComboBox()
+        self._theme_combo.addItem("Light · paper ledger", "light")
+        self._theme_combo.addItem("Dark · inverted ledger", "dark")
+        self._theme_combo.setToolTip("Switch light / dark theme (T). Saved in gui.theme.")
+        current = self._prefs.get_theme()
+        self._theme_combo.setCurrentIndex(1 if current == "dark" else 0)
+        self._theme_combo.currentIndexChanged.connect(self._apply_theme_choice)
+        appearance_layout.addWidget(self._theme_combo)
+        appearance_hint = QLabel("Monochrome in both modes · 1px hairlines · one family, one weight.")
+        appearance_hint.setObjectName("HintLabel")
+        appearance_hint.setWordWrap(True)
+        appearance_layout.addWidget(appearance_hint)
+        self._theme_toggle = QPushButton("TOGGLE THEME (T)")
+        self._theme_toggle.setToolTip("Flip light / dark immediately")
+        self._theme_toggle.clicked.connect(self._toggle_theme_button)
+        appearance_layout.addWidget(self._theme_toggle)
+        self.add_widget(appearance_box)
+
+        theme = QLabel(
+            "design        ink on paper · 1px hairlines · one family, one weight"
+        )
+        theme.setObjectName("ResultLabel")
+        theme.setWordWrap(True)
+        self.add_widget(theme)
+
+        self.add_stretch()
+
+    def sync_theme(self, theme: str) -> None:
+        """Reflect an externally toggled theme (sidebar / shortcut)."""
+        try:
+            self._theme_combo.blockSignals(True)
+            self._theme_combo.setCurrentIndex(1 if theme == "dark" else 0)
+        finally:
+            self._theme_combo.blockSignals(False)
+
+    def _apply_theme_choice(self) -> None:
+        theme = self._theme_combo.currentData() or "light"
+        self._prefs.set_theme(str(theme))
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, str(theme))
+
+    def _toggle_theme_button(self) -> None:
+        window = self.window()
+        if window is not None and hasattr(window, "toggle_theme"):
+            window.toggle_theme()
+        else:
+            self._apply_theme_choice()

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "antidetect"
+version = "0.1.0"
+description = "Antidetect browser — independent Chromium profiles with SQLite-backed state"
+requires-python = ">=3.12"
+dependencies = ["websocket-client>=1.8", "platformdirs>=4", "PySide6>=6.6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+gui = ["PySide6>=6.6"]
+
+[project.scripts]
+app = "app.cli.cli:main"
+app-gui = "app.gui.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

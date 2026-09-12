@@ -1,0 +1,1 @@
+"""Reusable GUI widgets: sidebar, pages and presentation primitives."""

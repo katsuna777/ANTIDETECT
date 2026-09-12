@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  tests:
+    uses: ./.github/workflows/ci.yml
+
+  build-windows:
+    needs: tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+      - name: Build standalone exe
+        run: |
+          python -m PyInstaller --noconfirm --clean --distpath dist --workpath build build-windows.spec
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item dist\Antidetect.exe release\Antidetect.exe -Force
+      - name: Validate artifact
+        run: python scripts/validate_windows.py --exe release/Antidetect.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Antidetect.exe
+          path: release/Antidetect.exe
+          if-no-files-found: error
+
+  build-macos:
+    needs: tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+      - name: Build .app
+        run: |
+          python3 -m PyInstaller --noconfirm --clean --distpath dist --workpath build build-macos.spec
+      - name: Validate .app
+        run: python3 scripts/validate_macos.py --app dist/Antidetect.app
+      - name: Pack .dmg
+        run: |
+          mkdir -p release stage
+          cp -R dist/Antidetect.app stage/
+          ln -s /Applications stage/Applications || true
+          hdiutil create -volname Antidetect -srcfolder stage -ov -format UDZO release/Antidetect.dmg
+      - name: Validate .dmg
+        run: python3 scripts/validate_macos.py --dmg release/Antidetect.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Antidetect.dmg
+          path: release/Antidetect.dmg
+          if-no-files-found: error
+
+  publish:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Antidetect.exe
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: Antidetect.dmg
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/Antidetect.exe
+            artifacts/Antidetect.dmg
+          generate_release_notes: true

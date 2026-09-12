@@ -1,0 +1,87 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Sessions / authentication / cookies
+sessions/
+session/
+*.session
+*.session-journal
+cookies/
+cookie-backups/
+profiles/
+user_profiles/
+user-profiles/
+
+# Local application data
+data/
+userdata/
+user_data/
+storage/
+cache/
+caches/
+*.cache
+
+# Stealth / debug traces
+*.stealth-trace
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Build artifacts
+build/
+dist/
+release/
+stage/
+*.spec
+!build-windows.spec
+!build-macos.spec
+*.dmg
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+coverage.xml
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo

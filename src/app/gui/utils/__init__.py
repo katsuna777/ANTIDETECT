@@ -1,0 +1,1 @@
+"""GUI utilities: theme + preference persistence adapters."""
