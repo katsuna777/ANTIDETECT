@@ -31,8 +31,9 @@ if TYPE_CHECKING:
 
 class SettingsPage(PlaceholderPage):
     def __init__(self, container: "Container", parent=None) -> None:
-        # Short page: no scroll area (everything visible at once).
-        super().__init__("Settings", kicker="SECTION 05", scroll=False)
+        # Scrollable like every other page: on short windows the appearance
+        # combos must scroll into view, never squeeze into unreadable stubs.
+        super().__init__("Settings", kicker="SECTION 05")
         self._container = container
         self._prefs = Preferences(container.settings)
 

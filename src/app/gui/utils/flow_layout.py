@@ -9,7 +9,7 @@ Classic Qt flow-layout algorithm, dependency-free.
 from __future__ import annotations
 
 from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt
-from PySide6.QtWidgets import QLayout, QSizePolicy, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLayout, QSizePolicy, QWidget
 
 
 class FlowLayout(QLayout):
@@ -85,32 +85,46 @@ class FlowLayout(QLayout):
         effective = rect.adjusted(
             margins.left(), margins.top(), -margins.right(), -margins.bottom()
         )
+        spacing = self.spacing()
+        # First pass: split items into lines. Second pass (placement only)
+        # centers every item vertically within its line, so short labels sit
+        # on the same axis as tall combos instead of floating at the top.
+        lines: list[tuple[list, int, int]] = []
+        current: list = []
         x = effective.x()
         y = effective.y()
         line_height = 0
-        spacing = self.spacing()
         for item in self._items:
             widget = item.widget()
-            # Explicitly hidden widgets take no space on screen. Height
-            # queries run before the first show (when isHidden() is true
-            # for everything), so the skip applies to placement only —
-            # otherwise pre-show heights collapse to zero.
+            # Hidden widgets take no space on screen. Height queries run
+            # before the first show (when isHidden() is true for
+            # everything), so the skip applies to placement only.
             if widget is not None and not test_only and widget.isHidden():
                 continue
-            # Respect hard constraints like a real layout engine does:
-            # effective size = hint bounded by [minimum, maximum].
-            item_hint = self._item_size(item)
-            next_x = x + item_hint.width() + spacing
-            if next_x - spacing > effective.right() and line_height > 0:
-                x = effective.x()
+            size = self._item_size(item)
+            width, height = size.width(), size.height()
+            if x + width > effective.right() and current:
+                lines.append((current, y, line_height))
                 y += line_height + spacing
-                next_x = x + item_hint.width() + spacing
+                x = effective.x()
                 line_height = 0
-            if not test_only:
-                item.setGeometry(QRect(QPoint(x, y), item_hint))
-            x = next_x
-            line_height = max(line_height, item_hint.height())
-        return y + line_height - rect.y() + margins.top() + margins.bottom()
+                current = []
+            current.append((item, x, width, height))
+            x += width + spacing
+            line_height = max(line_height, height)
+        if current:
+            lines.append((current, y, line_height))
+            y += line_height
+        if not test_only:
+            for line_items, line_y, line_h in lines:
+                for item, item_x, width, height in line_items:
+                    item.setGeometry(
+                        QRect(
+                            QPoint(item_x, line_y + (line_h - height) // 2),
+                            QSize(width, height),
+                        )
+                    )
+        return y - rect.y() + margins.top() + margins.bottom()
 
 
 def make_flow_row(*widgets: QWidget, spacing: int = 12) -> FlowLayout:
@@ -124,3 +138,18 @@ def make_flow_row(*widgets: QWidget, spacing: int = 12) -> FlowLayout:
         widget.setSizePolicy(policy)
         row.addWidget(widget)
     return row
+
+
+def glued_pair(label: QWidget, control: QWidget, spacing: int = 6) -> QWidget:
+    """Glue a label to its control so a line break never splits them.
+
+    Use for ``Label + ComboBox`` pairs inside flow rows: without this the
+    label can end one line while its combo starts the next.
+    """
+    box = QWidget()
+    row = QHBoxLayout(box)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(spacing)
+    row.addWidget(label, 0, Qt.AlignmentFlag.AlignVCenter)
+    row.addWidget(control, 0, Qt.AlignmentFlag.AlignVCenter)
+    return box

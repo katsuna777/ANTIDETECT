@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
-from app.gui.utils.flow_layout import FlowLayout, make_flow_row
+from app.gui.utils.flow_layout import FlowLayout, glued_pair, make_flow_row
 from app.gui.utils.preferences import Preferences
 from app.gui.utils.theme import (
     ACCENTS,
@@ -109,18 +109,57 @@ def test_flow_row_wraps_on_narrow_width():
     assert wrapped > single_line
 
 
-def test_flow_row_skips_hidden_widgets_at_placement():
-    from PySide6.QtCore import QRect
+def _shown_host(*widgets, width=700, height=100):
+    """Real usage mirror: layout installed in a shown host widget.
 
+    (Calling setGeometry on a parentless layout leaves children as
+    top-level windows whose geometry the platform plugin owns.)
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from app.gui.utils.flow_layout import FlowLayout
+
+    host = QWidget()
+    host.resize(width, height)
+    row = FlowLayout(host)
+    for widget in widgets:
+        row.addWidget(widget)
+    host.show()
+    row.activate()
+    QApplication.processEvents()
+    return host
+
+
+def test_flow_row_centers_items_vertically():
+    short = _fixed_widget(100, height=20)
+    tall = _fixed_widget(100, height=40)
+    _host = _shown_host(short, tall)
+    short_center = short.geometry().center().y()
+    tall_center = tall.geometry().center().y()
+    assert abs(short_center - tall_center) <= 1
+
+
+def test_glued_pair_keeps_label_and_control_together():
+    label = QLabel("Timezone")
+    control = _fixed_widget(200)
+    pair = glued_pair(label, control)
+    follower = _fixed_widget(200)
+    _host = _shown_host(pair, follower)
+    # Pair internals: label left of control, adjacent (glued, one unit).
+    assert label.geometry().left() < control.geometry().left()
+    assert control.geometry().left() - label.geometry().right() <= 10
+    # The pair wraps as one indivisible block, ahead of the follower.
+    assert pair.geometry().left() <= follower.geometry().left()
+
+
+def test_flow_row_skips_hidden_widgets_at_placement():
+    hidden = _fixed_widget(300)
     visible = _fixed_widget(200)
-    hidden = _fixed_widget(200)
     hidden.hide()
-    row = make_flow_row(visible, hidden)
-    row.setGeometry(QRect(0, 0, 700, 100))
-    assert visible.geometry().width() == 200
-    # Hidden widget is never placed: keeps its default (0, 0) position
-    # instead of taking the second slot at x=212.
-    assert hidden.pos().x() == 0
+    _host = _shown_host(hidden, visible, width=900)
+    # The hidden 300px widget takes no slot: visible starts at x=0,
+    # not at x=312 behind it.
+    assert visible.pos().x() == 0
 
 
 def test_configurations_page_uses_flow_rows(gui_container):

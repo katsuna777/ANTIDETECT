@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from app.application.profile_doctor import SUPPORTED_TIMEZONES
 from app.gui import workers
+from app.gui.utils.flow_layout import glued_pair
 from app.gui.dialogs.config_dialog import ConfigDialog
 from app.gui.dialogs.error_dialog import show_error
 from app.gui.widgets.placeholder_page import PlaceholderPage
@@ -92,11 +93,13 @@ class ConfigurationsPage(PlaceholderPage):
         self._delete.setEnabled(False)
         # Wrapping rows: on narrow windows the knobs flow underneath
         # instead of sliding off-screen (horizontal scroll is disabled).
+        # Label + control travel as one glued pair, so a line break never
+        # leaves "Timezone" on one line and its box on the next.
         self.add_flow_row(
-            QLabel("Template"), self._template,
-            QLabel("Platform"), self._platform,
-            QLabel("Screen"), self._resolution,
-            QLabel("Timezone"), self._timezone_filter,
+            glued_pair(QLabel("Template"), self._template),
+            glued_pair(QLabel("Platform"), self._platform),
+            glued_pair(QLabel("Screen"), self._resolution),
+            glued_pair(QLabel("Timezone"), self._timezone_filter),
             self._generate,
         )
         self.add_flow_row(
