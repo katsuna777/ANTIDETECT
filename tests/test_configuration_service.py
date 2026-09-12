@@ -246,3 +246,60 @@ def test_align_browser_version_without_chrome_ua_raises(config_service):
     cfg = config_service.create_configuration("No UA")
     with pytest.raises(ValueError, match="no Chrome User-Agent"):
         config_service.align_browser_version(cfg.id, 152)
+
+
+def _macos_cfg(config_service, name="MacCfg"):
+    from app.application.configuration_generator import build_client_hints
+
+    return config_service.create_configuration(
+        name,
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+        ),
+        platform="macos",
+        client_hints=build_client_hints("chrome", "macos", "152.0.0.0"),
+        webgl_settings={
+            "vendor": "Google Inc. (Apple)",
+            "renderer": "ANGLE (Apple, Apple M1, OpenGL 4.1)",
+        },
+    )
+
+
+def test_platform_change_rebuilds_ua_hints_and_webgl(config_service):
+    cfg = _macos_cfg(config_service)
+    updated = config_service.update_configuration(cfg.id, platform="linux")
+
+    assert updated.platform == "linux"
+    assert "Linux" in updated.user_agent
+    assert "Macintosh" not in updated.user_agent
+    assert "Chrome/152." in updated.user_agent
+    assert updated.client_hints["platform"] == "Linux"
+    assert updated.client_hints["fullVersion"].startswith("152.")
+    assert "Mesa" in updated.webgl_settings["renderer"]
+    assert "Apple M1" not in updated.webgl_settings["renderer"]
+
+
+def test_platform_unchanged_leaves_derived_fields_alone(config_service):
+    cfg = _macos_cfg(config_service)
+    updated = config_service.update_configuration(cfg.id, platform="macos")
+    assert updated.user_agent == cfg.user_agent
+    assert updated.client_hints == cfg.client_hints
+
+
+def test_explicit_hints_win_over_platform_realign(config_service):
+    from app.application.configuration_generator import build_client_hints
+
+    cfg = _macos_cfg(config_service)
+    with pytest.raises(ValueError, match="mismatches client_hints"):
+        config_service.update_configuration(
+            cfg.id,
+            platform="linux",
+            client_hints=build_client_hints("chrome", "macos", "152.0.0.0"),
+        )
+
+
+def test_platform_change_on_bare_config_passes(config_service):
+    cfg = config_service.create_configuration("Bare")
+    updated = config_service.update_configuration(cfg.id, platform="linux")
+    assert updated.platform == "linux"

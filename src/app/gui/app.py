@@ -52,18 +52,23 @@ def run_app(
     """
     app = app or build_app()
     try:
+        from app.gui.i18n import set_language
         from app.gui.utils.preferences import Preferences
 
         stored = Preferences(container.settings).get_theme()
+        stored_lang = Preferences(container.settings).get_language()
+        set_language(stored_lang)
         from app.gui.utils.theme import current_accent
 
         apply_theme(app, stored, Preferences(container.settings).get_accent(current_accent(app)))
     except Exception:
         pass
 
+    from app.gui.i18n import tr
+
     container.logs.info(
         "app",
-        "Application started",
+        tr("log.app.started"),
         extra={
             "data_dir": str(container.config.data_dir),
             "database": str(container.config.database_path),
@@ -88,7 +93,7 @@ def run_app(
     # Container (SQLite). Сплэш — child окна, умрёт вместе с ним.
     app.aboutToQuit.connect(window.close)
     app.aboutToQuit.connect(
-        lambda: container.logs.info("app", "Application exiting")
+        lambda: container.logs.info("app", tr("log.app.exiting"))
     )
     app.aboutToQuit.connect(container.close)
     return app.exec()

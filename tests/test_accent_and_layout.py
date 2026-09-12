@@ -64,6 +64,56 @@ def test_toggle_theme_keeps_accent():
     assert current_accent(None) == "mono"
 
 
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("accent", [a for a in ACCENTS])
+def test_selection_colors_follow_theme_not_system(theme, accent):
+    """Regression: selected error/details text must stay visible.
+
+    Without palette Highlight roles, selected text keeps the system
+    highlight under our QSS ink — i.e. invisible selected text.
+    """
+    from PySide6.QtGui import QColor, QPalette
+
+    from app.gui.utils.theme import palette_for
+
+    app = QApplication.instance()
+    apply_theme(app, theme, accent)
+    pal = palette_for(theme, accent)
+    colors = QApplication.instance().palette()
+    assert colors.color(QPalette.ColorRole.Highlight) == QColor(pal.ink)
+    assert colors.color(QPalette.ColorRole.HighlightedText) == QColor(
+        pal.selection_ink
+    )
+
+
+def test_selected_text_renders_with_contrast():
+    """Pixel check: a select-all in a text field paints readable selection."""
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication, QTextEdit
+
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app, "dark", "yellow")
+    editor = QTextEdit()
+    try:
+        editor.setPlainText("Profile #003 failed pre-launch diagnostics")
+        editor.show()
+        editor.selectAll()
+        app.processEvents()
+        image = editor.grab().toImage()
+        yellowish = 0
+        total = 0
+        for y in range(0, image.height(), 2):
+            for x in range(0, image.width(), 2):
+                pixel = QColor(image.pixel(x, y))
+                total += 1
+                if pixel.red() > 200 and pixel.green() > 180 and pixel.blue() < 100:
+                    yellowish += 1
+        # Selection band must be clearly present (not a sliver, not missing).
+        assert yellowish / max(total, 1) > 0.05
+    finally:
+        editor.close()
+
+
 def test_accent_preference_roundtrip(gui_container):
     prefs = Preferences(gui_container.settings)
     assert prefs.get_accent() == "mono"

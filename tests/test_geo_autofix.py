@@ -93,4 +93,4 @@ def test_autofix_offer_regenerates_for_installed_chrome(
     offer = page._autofix_offer(profile.id)
     assert offer is not None
     label, _apply = offer
-    assert "Chrome/152" in label
+    assert label == "FIX"

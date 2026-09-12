@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import queue
+import threading
+import time
 from typing import Iterable, Optional, Protocol
 
 from app.infrastructure.proxy.transport import DirectTransport, HttpReply
@@ -126,10 +129,37 @@ def default_providers() -> CompositeIpProvider:
 
 
 def fetch_direct_ip(timeout: float = 6.0, transport=None) -> str | None:
-    """Our own external IP as seen from the internet (no proxy)."""
+    """Our own external IP as seen from the internet (no proxy).
+
+    Providers race concurrently under one shared deadline: sequentially they
+    could stall the whole batch (ip-api 6s, then ipify 6s, then 42.pl 6s)
+    before a single proxy is checked. First *valid* result wins; a fast
+    failure never beats a slower success.
+    """
     transport = transport or DirectTransport()
-    result = default_providers().probe(transport, timeout)
-    return result.external_ip if result else None
+    providers = [IpApiProvider(), PlainIpProvider()]
+    found: queue.Queue[str] = queue.Queue()
+
+    def attempt(provider) -> None:
+        try:
+            result = provider.probe(transport, timeout)
+        except Exception:
+            result = None
+        if result is not None and _valid_ip(result.external_ip):
+            found.put(result.external_ip)
+
+    threads = [
+        threading.Thread(target=attempt, args=(provider,), daemon=True)
+        for provider in providers
+    ]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + max(timeout, 0.0)
+    while True:
+        try:
+            return found.get(timeout=max(deadline - time.monotonic(), 0.0))
+        except queue.Empty:
+            return None
 
 
 def resolve_country_direct(
@@ -232,13 +262,37 @@ def resolve_country_consensus(
     if known_code:
         opinions.append((None, known_code))
     share = timeout / max(len(providers), 1)
-    for provider in providers:
+    # Cross-checks race concurrently under one shared deadline instead of
+    # running back-to-back: same votes, a fraction of the wall time.
+    # Results are re-sorted into provider order so ties break exactly like
+    # the old sequential loop.
+    found: queue.Queue[tuple[int, str | None, str | None]] = queue.Queue()
+
+    def attempt(index: int, provider) -> None:
         try:
             name, code = provider.lookup(ip, share, transport)
         except Exception:
-            continue
+            return
         if code:
-            opinions.append((name, code))
+            found.put((index, name, code))
+
+    threads = [
+        threading.Thread(target=attempt, args=(index, provider), daemon=True)
+        for index, provider in enumerate(providers)
+    ]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + max(share, 0.0)
+    for thread in threads:
+        thread.join(timeout=max(deadline - time.monotonic(), 0.0))
+    ranked: list[tuple[int, str | None, str | None]] = []
+    while True:
+        try:
+            ranked.append(found.get_nowait())
+        except queue.Empty:
+            break
+    for _, name, code in sorted(ranked):
+        opinions.append((name, code))
     votes: dict[str, int] = {}
     for _, code in opinions:
         votes[code] = votes.get(code, 0) + 1

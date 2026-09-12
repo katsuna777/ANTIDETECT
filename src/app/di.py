@@ -75,6 +75,18 @@ def bootstrap(config: AppConfig | None = None) -> Container:
     log_repo = SqliteLogRepository(db)
 
     logs = LogService(log_repo)
+    # Stored UI language wins before the first log row, so even the
+    # "session started" entry is written in the user's language.
+    try:
+        from app.gui.i18n import normalize as _normalize_lang
+        from app.gui.i18n import set_language as _set_language
+
+        _stored = settings_repo.get("gui.language")
+        _set_language(
+            _normalize_lang(_stored.value if _stored is not None else None)
+        )
+    except Exception:
+        pass
     # Every launch starts a clean slate: wipe the previous session's rows so
     # the live Log page only ever shows this run. Past sessions survive export.
     logs.reset()
@@ -130,6 +142,11 @@ def bootstrap(config: AppConfig | None = None) -> Container:
         # bootstrap() must never block on the network (GUI cold start, CLI
         # latency when offline). ensure_direct_ip() covers the first check.
         resolve_direct_ip=False,
+        # Strict pool quality: country-less proxies break geo matching
+        # (autoconfig, doctor gate) and sluggish ones stall browsing,
+        # so both fail the check instead of entering the pool as WORKING.
+        require_country=True,
+        max_latency_ms=4000,
     )
     proxy_service = ProxyService(
         proxies=proxy_repo,

@@ -145,6 +145,11 @@ class PlaceholderPage(QWidget):
     def add_stretch(self) -> None:
         self._body.addStretch(1)
 
+    def set_title(self, title: str, kicker: str | None = None) -> None:
+        self._title_label.setText(title)
+        if kicker is not None:
+            self._kicker_label.setText(kicker.upper())
+
     def make_empty_state(self, text: str) -> QLabel:
         """A centered monochrome hint shown when a list has no rows."""
         label = QLabel(text)

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from string import Template
 from typing import Literal
 
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
 
 ThemeName = Literal["light", "dark"]
@@ -435,6 +435,13 @@ QCheckBox::indicator:checked {
     background: $ink;
 }
 
+/* --------------------------------------------------------------- text */
+
+QTextEdit, QPlainTextEdit, QTextBrowser {
+    selection-background-color: $ink;
+    selection-color: $selink;
+}
+
 /* --------------------------------------------------------------- tables */
 
 QTableView {
@@ -629,8 +636,16 @@ def apply_theme(
     """Apply the global theme to ``app; returns the normalized name."""
     name = normalize_theme(theme)
     accent_name = normalize_accent(accent)
+    pal = palette_for(name, accent_name)
     family = font_family()
     app.setStyleSheet(build_stylesheet(family, name, accent_name))
+    # Selection colors live in the palette, not the style sheet: without
+    # this, selected text (error details, labels) keeps the system highlight
+    # while QSS forces our ink on top — i.e. invisible selected text.
+    palette = QPalette(app.palette())
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(pal.ink))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(pal.selection_ink))
+    app.setPalette(palette)
     try:
         app.setProperty("antidetectTheme", name)
         app.setProperty("antidetectAccent", accent_name)

@@ -34,6 +34,7 @@ class Preferences:
     KEY_CONFIRM_DESTRUCTIVE = "gui.confirm_destructive"
     KEY_THEME = "gui.theme"
     KEY_ACCENT = "gui.accent"
+    KEY_LANGUAGE = "gui.language"
     THEME_LIGHT = "light"
     THEME_DARK = "dark"
     ACCENT_MONO = "mono"
@@ -102,6 +103,22 @@ class Preferences:
         if normalized not in self.ACCENTS:
             normalized = self.ACCENT_MONO
         self.set(self.KEY_ACCENT, normalized)
+
+    # ------------------------------------------------------------- language
+
+    def get_language(self, default: str = "en") -> str:
+        """Stored UI language: ``'en'`` or ``'ru'`` (fallback to default)."""
+        from app.gui.i18n import normalize as _normalize
+
+        raw = self.get(self.KEY_LANGUAGE)
+        if not raw.strip():
+            return default if default in ("en", "ru") else "en"
+        return _normalize(raw)
+
+    def set_language(self, language: str) -> None:
+        from app.gui.i18n import normalize as _normalize
+
+        self.set(self.KEY_LANGUAGE, _normalize(language))
 
     # ---------------------------------------------------------- geometry
 

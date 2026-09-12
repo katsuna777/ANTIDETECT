@@ -141,6 +141,8 @@ class ProxyChecker:
         direct_ip_provider: Optional[Callable[[], str | None]] = None,
         https_capability_endpoint: str = HTTPS_CAPABILITY_ENDPOINT,
         geo_reviewer: Optional[Callable[..., tuple[str | None, str | None]]] = None,
+        require_country: bool = False,
+        max_latency_ms: int | None = None,
     ) -> None:
         self._providers = providers or ip_prov.default_providers()
         self._transport_factory = transport_factory or build_transport
@@ -149,6 +151,14 @@ class ProxyChecker:
         self._workers = workers
         self.max_failures = max_failures
         self._https_capability_endpoint = https_capability_endpoint
+        # Strictness gates (opt-in; production enables both via di.py):
+        # * require_country — a proxy whose exit country cannot be determined
+        #   is useless for geo matching (autoconfig, doctor gate), so it fails
+        #   instead of entering the pool as a country-less WORKING proxy;
+        # * max_latency_ms — caps the provider-probe round trip; slower
+        #   proxies make browsing painful and burn worker time.
+        self._require_country = require_country
+        self._max_latency_ms = max_latency_ms
 
         self._direct_ip_provider = direct_ip_provider or ip_prov.fetch_direct_ip
         self._direct_ip: str | None = None
@@ -247,6 +257,20 @@ class ProxyChecker:
                 ok=False,
                 error="external IP discovery failed (timeout or refused)",
             )
+        if (
+            self._max_latency_ms is not None
+            and elapsed_ms > self._max_latency_ms
+        ):
+            return CheckOutcome(
+                proxy,
+                ok=False,
+                latency_ms=elapsed_ms,
+                external_ip=result.external_ip,
+                error=(
+                    f"too slow ({elapsed_ms}ms > "
+                    f"{self._max_latency_ms}ms limit)"
+                ),
+            )
         # HTTP(S)-protocol proxies must tunnel HTTPS end-to-end. Chrome spins
         # forever (endless search loading) on a proxy that forwards plain HTTP
         # but cannot CONNECT to 443, so such proxies are rejected here and
@@ -273,6 +297,14 @@ class ProxyChecker:
             )
             country = reviewed_country or country
             country_code = reviewed_code or country_code
+        if self._require_country and not country_code:
+            return CheckOutcome(
+                proxy,
+                ok=False,
+                latency_ms=elapsed_ms,
+                external_ip=result.external_ip,
+                error="exit country could not be determined",
+            )
         anonymity = self._probe_anonymity(transport, result.external_ip, timeout)
         return CheckOutcome(
             proxy,

@@ -60,3 +60,74 @@ def test_failing_source_is_skipped_not_fatal() -> None:
         timeout=3.0,
     )
     assert result == (None, "HK")
+
+
+def test_slow_provider_does_not_stall_consensus() -> None:
+    """A hanging database is abandoned at the shared deadline; fast votes win.
+
+    Sequential code would block ~5s on the slow provider; parallel code
+    finishes at the deadline with the fast provider's opinion.
+    """
+    import time
+
+    class SlowAgree(StubGeo):
+        def lookup(self, ip, timeout, transport):
+            time.sleep(5.0)
+            return ("Sweden", "SE")
+
+    started = time.monotonic()
+    result = ip_prov.resolve_country_consensus(
+        "203.0.113.7",
+        providers=[SlowAgree("slow", None), StubGeo("fast", ("Sweden", "SE"))],
+        timeout=1.0,
+    )
+    elapsed = time.monotonic() - started
+    assert result == ("Sweden", "SE")
+    assert elapsed < 2.0
+
+
+def test_direct_ip_takes_first_valid_not_first_finished() -> None:
+    """Parallel race: a slow ip-api answer must lose to a fast ipify one.
+
+    Sequential code always prefers ip-api (tried first); parallel code takes
+    whichever valid answer arrives first.
+    """
+    import time
+
+    from app.infrastructure.proxy.transport import HttpReply
+
+    class RoutingTransport:
+        def __init__(self, routes) -> None:
+            self._routes = routes
+
+        def get(self, url, timeout):
+            for substring, delay, outcome in self._routes:
+                if substring in url:
+                    if delay:
+                        time.sleep(delay)
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    return outcome
+            raise AssertionError(f"unexpected url {url}")
+
+    def _reply(body: str):
+        return HttpReply(status=200, headers={}, body=body)
+
+    transport = RoutingTransport(
+        [
+            ("ip-api.com", 0.5, _reply('{"status":"success","query":"1.1.1.1"}')),
+            ("api.ipify.org", 0.05, _reply("5.6.7.8\n")),
+            ("42.pl", 0.0, RuntimeError("down")),
+        ]
+    )
+    started = time.monotonic()
+    assert ip_prov.fetch_direct_ip(timeout=5.0, transport=transport) == "5.6.7.8"
+    assert time.monotonic() - started < 1.0
+
+
+def test_direct_ip_none_when_everything_fails() -> None:
+    class DeadTransport:
+        def get(self, url, timeout):
+            raise RuntimeError("offline")
+
+    assert ip_prov.fetch_direct_ip(timeout=1.0, transport=DeadTransport()) is None

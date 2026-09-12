@@ -1,16 +1,10 @@
-"""Proxies page: aggregate counts, IP lookup and long-running operations.
-
-``REFRESH POOL`` forgets every stored proxy and collects a brand-new pool from
-the configured sources, then checks each one end-to-end and streams every
-working proxy into the live list in real time (via a queued Qt signal, so no
-widget is ever touched from a pool thread).
-"""
+"""Proxies page: aggregate counts, IP lookup and long-running operations."""
 
 from __future__ import annotations
 
 import bisect
 import threading
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QListWidget, QProgressBar, QPushButton
@@ -18,6 +12,7 @@ from PySide6.QtWidgets import QLabel, QListWidget, QProgressBar, QPushButton
 from app.domain.enums.proxy_status import ProxyStatus
 from app.gui import workers
 from app.gui.dialogs.error_dialog import show_error
+from app.gui.i18n import tr
 from app.gui.utils.flags import country_label
 from app.gui.widgets.placeholder_page import PlaceholderPage
 
@@ -25,9 +20,6 @@ if TYPE_CHECKING:
     from app.di import Container
     from app.gui.workers.task_runner import TaskRunner
 
-# Network callbacks are emitted on the checker's caller thread (a GUI worker),
-# so they only enqueue Qt signals; the actual widget work happens on the GUI
-# thread below. High concurrency is what keeps a 6000+ proxy pool fast.
 _PROXY_CHECK_WORKERS = 400
 _PROXY_CHECK_TIMEOUT = 5.0
 
@@ -38,26 +30,25 @@ class ProxiesPage(PlaceholderPage):
     def __init__(
         self, container: "Container", runner: "TaskRunner", parent=None
     ) -> None:
-        super().__init__("Proxies", kicker="SECTION 02")
+        super().__init__(tr("proxies.title"), kicker=tr("proxies.kicker"))
         self._container = container
         self._runner = runner
 
         self._total, self._working, self._dead = self.add_metrics(
-            "TOTAL", "WORKING", "DEAD"
+            tr("metric.total"), tr("metric.working"), tr("metric.dead")
         )
 
-        self._refresh = QPushButton("REFRESH POOL")
+        self._refresh = QPushButton(tr("proxies.refresh"))
         self._refresh.setObjectName("PrimaryButton")
-        self._refresh.setToolTip("Wipe the pool and check a fresh one (destructive)")
-        self._lookup = QPushButton("LOOKUP IP")
-        self._lookup.setToolTip("Show the current public exit IP")
-        self._stop = QPushButton("STOP")
-        self._stop.setToolTip("Stop the running check")
+        self._refresh.setToolTip(tr("proxies.refresh.tip"))
+        self._lookup = QPushButton(tr("proxies.lookup"))
+        self._lookup.setToolTip(tr("proxies.lookup.tip"))
+        self._stop = QPushButton(tr("proxies.stop"))
+        self._stop.setToolTip(tr("proxies.stop.tip"))
         self._stop.setEnabled(False)
         self.add_control_row(self._refresh, self._lookup, self._stop)
-        self.add_widget(
-            self.make_hint("REFRESH POOL wipes stored proxies and re-checks them live. Dead ones are purged automatically.")
-        )
+        self._hint = self.make_hint(tr("proxies.hint"))
+        self.add_widget(self._hint)
 
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
@@ -73,7 +64,7 @@ class ProxiesPage(PlaceholderPage):
         self._live.setObjectName("LiveList")
         self.add_widget(self._live, 1)
 
-        self._result = QLabel("Idle.")
+        self._result = QLabel(tr("proxies.idle"))
         self._result.setWordWrap(True)
         self._result.setObjectName("ResultLabel")
         self.add_control_row(self._result)
@@ -89,6 +80,23 @@ class ProxiesPage(PlaceholderPage):
         self._live_dead = 0
         self.reload()
 
+    # ------------------------------------------------------------ retranslate
+
+    def retranslate(self) -> None:
+        self.set_title(tr("proxies.title"), tr("proxies.kicker"))
+        self._total._label.setText(tr("metric.total"))
+        self._working._label.setText(tr("metric.working"))
+        self._dead._label.setText(tr("metric.dead"))
+        self._refresh.setText(tr("proxies.refresh"))
+        self._refresh.setToolTip(tr("proxies.refresh.tip"))
+        self._lookup.setText(tr("proxies.lookup"))
+        self._lookup.setToolTip(tr("proxies.lookup.tip"))
+        self._stop.setText(tr("proxies.stop"))
+        self._stop.setToolTip(tr("proxies.stop.tip"))
+        self._hint.setText(tr("proxies.hint"))
+        if self._result.text() in ("Idle.", "Готов."):
+            self._result.setText(tr("proxies.idle"))
+
     # ------------------------------------------------------------ actions
 
     def reload(self) -> None:
@@ -97,8 +105,6 @@ class ProxiesPage(PlaceholderPage):
             on_result=self._apply_summary,
             on_error=lambda exc: show_error(self, exc),
         )
-        # Repopulate the list from the stored pool so it survives restarts:
-        # it mirrors the database until REFRESH POOL wipes it.
         self._runner.submit(
             workers.tasks.list_proxies(self._container),
             on_result=self._apply_stored_proxies,
@@ -106,7 +112,6 @@ class ProxiesPage(PlaceholderPage):
         )
 
     def _run(self) -> None:
-        """REFRESH POOL: wipe the pool, collect a fresh one, check it live."""
         import os
 
         from PySide6.QtWidgets import QMessageBox
@@ -118,8 +123,8 @@ class ProxiesPage(PlaceholderPage):
         if not headless and prefs.get_bool(Preferences.KEY_CONFIRM_DESTRUCTIVE, default=True):
             answer = QMessageBox.question(
                 self,
-                "Refresh pool",
-                "Wipe all stored proxies and check a fresh pool?",
+                tr("proxies.refresh.dialog"),
+                tr("proxies.refresh.question"),
             )
             if answer is not QMessageBox.StandardButton.Yes:
                 return
@@ -164,12 +169,12 @@ class ProxiesPage(PlaceholderPage):
         if self._stop_event is not None:
             self._stop_event.set()
             self._stop.setEnabled(False)
-            self._container.logs.info("proxy", "Proxy check stopped by user")
-            self._result.setText("Stopping…")
+            self._container.logs.info("proxy", tr("log.proxy.stopped"))
+            self._result.setText(tr("proxies.stopping"))
 
     def _lookup_ip(self) -> None:
         self._lookup.setEnabled(False)
-        self._result.setText("Resolving public IP…")
+        self._result.setText(tr("proxies.resolving"))
         self._runner.submit(
             workers.tasks.lookup_ip(self._container),
             on_result=self._apply_lookup_ip,
@@ -179,11 +184,11 @@ class ProxiesPage(PlaceholderPage):
 
     def _apply_lookup_ip(self, ip: object) -> None:
         if ip:
-            self._container.logs.info("proxy", "Public IP resolved", extra={"ip": str(ip)})
-            self._result.setText(f"Public IP: {ip}")
+            self._container.logs.info("proxy", tr("log.proxy.resolved"), extra={"ip": str(ip)})
+            self._result.setText(tr("proxies.public.ip", ip=ip))
         else:
-            self._container.logs.warn("proxy", "Public IP could not be resolved")
-            self._result.setText("Public IP could not be resolved.")
+            self._container.logs.warn("proxy", tr("log.proxy.unresolved"))
+            self._result.setText(tr("proxies.public.fail"))
 
     # ------------------------------------------------------------ results
 
@@ -198,26 +203,16 @@ class ProxiesPage(PlaceholderPage):
         self._progress.setValue(done)
         pct = int(done * 100 / total) if total else 0
         self._progress_label.setText(f"{done} / {total} ({pct}%)")
-        self._result.setText(f"Checked {done} / {total}")
+        self._result.setText(tr("proxies.checked", done=done, total=total))
         self._refresh_live_metrics()
 
     def _refresh_live_metrics(self) -> None:
-        """Keep the metric strip in sync with the in-flight batch.
-
-        Updated on every streamed result so TOTAL / WORKING / DEAD reflect the
-        run in real time instead of holding the previous database snapshot.
-        """
         total = self._batch_total or (self._live_working + self._live_dead)
         self._total.set_value(total)
         self._working.set_value(self._live_working)
         self._dead.set_value(self._live_dead)
 
     def _append_proxy(self, outcome: object) -> None:
-        """GUI thread: a working proxy finished checking — insert it into the
-        live list right away, keeping the list sorted by latency (lowest ping
-        first). Non-working proxies are never shown here; DEAD ones are removed
-        from the database by the backend, so the table ends up working-only.
-        """
         proxy = outcome.proxy
         if not outcome.ok:
             self._live_dead += 1
@@ -247,16 +242,10 @@ class ProxiesPage(PlaceholderPage):
         location = country_label(country_code, country)
         return (
             f"#{seq:04d} · {proxy.id:05d} · {proxy.host_port} · "
-            f"WORKING · {latency_ms_str} · {location}"
+            f"{tr('proxies.row.working')} · {latency_ms_str} · {location}"
         )
 
     def _apply_stored_proxies(self, rows: object) -> None:
-        """Rebuild the list from the stored pool (persistence across restarts).
-
-        Shows working proxies sorted by latency, exactly like the live
-        stream. Skipped while a check run is streaming — its own rows own
-        the list then. Only REFRESH POOL clears the list (see ``_run``).
-        """
         if not self._refresh.isEnabled():
             return
         stored = list(rows or [])
@@ -298,18 +287,22 @@ class ProxiesPage(PlaceholderPage):
     def _apply_check_summary(self, summary: object) -> None:
         removed = getattr(summary, "removed", 0)
         stopped = self._stop_event is not None and self._stop_event.is_set()
-        prefix = "Stopped" if stopped else "Checked"
-        line = (
-            f"{prefix} {summary.checked} · working {summary.working} · "
-            f"failed {summary.failed} · removed {removed}"
+        prefix = tr("proxies.summary.stopped") if stopped else tr("proxies.summary.checked")
+        line = tr(
+            "proxies.summary",
+            prefix=prefix,
+            checked=summary.checked,
+            working=summary.working,
+            failed=summary.failed,
+            removed=removed,
         )
         collected = getattr(summary, "collected", None)
         if collected is not None:
-            line += f" · collected {collected}"
-        line += f" ({summary.elapsed_seconds:.1f}s)"
+            line += tr("proxies.summary.collected", n=collected)
+        line += tr("proxies.summary.elapsed", s=summary.elapsed_seconds)
         source_errors = list(getattr(summary, "source_errors", None) or [])
         if source_errors:
-            line += " · Sources failed: " + "; ".join(source_errors)
+            line += tr("proxies.summary.sources", errs="; ".join(source_errors))
         self._result.setText(line)
         self.reload()
 

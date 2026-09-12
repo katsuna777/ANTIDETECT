@@ -1,11 +1,4 @@
-"""Live application log page.
-
-Shows every entry the app records (session start, Chromium launch + its own
-stdout/stderr stream, proxy checks) in real time. Rows are fetched
-incrementally from ``LogService`` on the background pool, so the page never
-touches SQLite from the UI thread. EXPORT writes the whole session to a UTF-8
-text file for offline debugging; CLEAR wipes the current session's rows.
-"""
+"""Live application log page."""
 
 from __future__ import annotations
 
@@ -24,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.gui import workers
+from app.gui.i18n import tr
 from app.gui.widgets.placeholder_page import PlaceholderPage
 
 if TYPE_CHECKING:
@@ -35,7 +29,6 @@ _POLL_MS = 1000
 
 
 def _format_ts(value: datetime) -> str:
-    """Render a stored UTC-naive timestamp in the user's local timezone."""
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -62,41 +55,55 @@ class LogsPage(PlaceholderPage):
     def __init__(
         self, container: "Container", runner: "TaskRunner", parent=None
     ) -> None:
-        super().__init__("Log", kicker="LIVE SESSION LOG")
+        super().__init__(tr("logs.title"), kicker=tr("logs.kicker"))
         self._container = container
         self._runner = runner
         self._last_id = 0
         self._polling = False
 
-        self._entries = QLabel("0 entries")
+        self._entries = QLabel(tr("logs.entries", n=0, last=0))
         self._entries.setObjectName("ResultLabel")
         self.add_control_row(self._entries)
 
-        self._export = QPushButton("EXPORT")
-        self._clear = QPushButton("CLEAR")
-        self._pause = QPushButton("PAUSE")
+        self._export = QPushButton(tr("logs.export"))
+        self._clear = QPushButton(tr("logs.clear"))
+        self._pause = QPushButton(tr("logs.pause"))
         self.add_control_row(self._export, self._clear, self._pause)
 
         self._list = QListWidget()
         self._list.setObjectName("LogList")
         self.add_widget(self._list, 1)
 
-        self._result = QLabel("Ready.")
+        self._result = QLabel(tr("logs.ready"))
         self._result.setObjectName("ResultLabel")
         self.add_control_row(self._result)
 
         self._export.clicked.connect(self._export_logs)
         self._clear.clicked.connect(self._clear_logs)
         self._pause.clicked.connect(self._toggle_pause)
-        self._export.setToolTip("Write the whole session to a UTF-8 text file")
-        self._clear.setToolTip("Wipe the current session's rows")
-        self._pause.setToolTip("Pause live polling")
+        self._export.setToolTip(tr("logs.export.tip"))
+        self._clear.setToolTip(tr("logs.clear.tip"))
+        self._pause.setToolTip(tr("logs.pause.tip"))
 
         self._timer = QTimer(self)
         self._timer.setInterval(_POLL_MS)
         self._timer.timeout.connect(self._poll)
         self._paused = False
         self._timer.start()
+
+    # ------------------------------------------------------------ retranslate
+
+    def retranslate(self) -> None:
+        self.set_title(tr("logs.title"), tr("logs.kicker"))
+        self._refresh_count()
+        self._export.setText(tr("logs.export"))
+        self._export.setToolTip(tr("logs.export.tip"))
+        self._clear.setText(tr("logs.clear"))
+        self._clear.setToolTip(tr("logs.clear.tip"))
+        self._pause.setText(tr("logs.resume") if self._paused else tr("logs.pause"))
+        self._pause.setToolTip(tr("logs.pause.tip"))
+        if self._result.text() in ("Ready.", "Готов."):
+            self._result.setText(tr("logs.ready"))
 
     # ------------------------------------------------------------ polling
 
@@ -116,7 +123,7 @@ class LogsPage(PlaceholderPage):
 
     def _poll_error(self, exc: object) -> None:
         self._polling = False
-        self._result.setText(f"Log poll failed: {exc}")
+        self._result.setText(tr("logs.poll.fail", err=exc))
 
     def _append_logs(self, entries: object) -> None:
         entries = list(entries or [])
@@ -134,49 +141,49 @@ class LogsPage(PlaceholderPage):
         self._list.scrollToBottom()
 
     def _refresh_count(self) -> None:
-        self._entries.setText(f"{self._list.count()} entries · last id {self._last_id}")
+        self._entries.setText(tr("logs.entries", n=self._list.count(), last=self._last_id))
 
     # ------------------------------------------------------------ actions
 
     def _export_logs(self) -> None:
         default_name = f"antidetect_log_{datetime.now():%Y%m%d_%H%M%S}.txt"
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export log", default_name, "Text (*.txt)"
+            self, tr("logs.export.dialog"), default_name, "Text (*.txt)"
         )
         if not path:
             return
         self._export.setEnabled(False)
-        self._result.setText("Exporting…")
+        self._result.setText(tr("logs.exporting"))
         self._runner.submit(
             workers.tasks.export_logs(self._container, Path(path)),
             on_result=lambda p: self._export_done(p),
-            on_error=lambda exc: self._result.setText(f"Export failed: {exc}"),
+            on_error=lambda exc: self._result.setText(tr("logs.export.fail", err=exc)),
             on_finished=lambda: self._export.setEnabled(True),
         )
 
     def _export_done(self, path: object) -> None:
         self._container.logs.info(
-            "gui", f"Log exported", extra={"path": str(path)}
+            "gui", tr("log.exported"), extra={"path": str(path)}
         )
-        self._result.setText(f"Exported {self._list.count()} rows → {path}")
+        self._result.setText(tr("logs.exported", n=self._list.count(), path=path))
 
     def _clear_logs(self) -> None:
-        self._result.setText("Clearing log…")
+        self._result.setText(tr("logs.clearing"))
         self._runner.submit(
             workers.tasks.clear_logs(self._container),
             on_result=self._apply_clear,
-            on_error=lambda exc: self._result.setText(f"Clear failed: {exc}"),
+            on_error=lambda exc: self._result.setText(tr("logs.clear.fail", err=exc)),
         )
 
     def _apply_clear(self, cleared: object) -> None:
         self._list.clear()
         self._last_id = 0
         self._container.logs.info(
-            "gui", "Log cleared", extra={"cleared": cleared}
+            "gui", tr("log.cleared"), extra={"cleared": cleared}
         )
-        self._result.setText(f"Cleared {cleared} entries.")
+        self._result.setText(tr("logs.cleared", n=cleared))
         self._refresh_count()
 
     def _toggle_pause(self) -> None:
         self._paused = not self._paused
-        self._pause.setText("RESUME" if self._paused else "PAUSE")
+        self._pause.setText(tr("logs.resume") if self._paused else tr("logs.pause"))

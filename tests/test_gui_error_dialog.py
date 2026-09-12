@@ -41,3 +41,28 @@ def test_details_carry_traceback_for_unexpected_errors():
         details = error_details(exc)
     assert "ZeroDivisionError" in details
     assert "test_details_carry_traceback_for_unexpected_errors" in details
+
+
+def test_action_buttons_keep_full_caption_width():
+    """Regression: long action captions must not squeeze into stubs.
+
+    QMessageBox sizes to the message and compresses the button row;
+    _build_box forces a floor so every button gets its size hint.
+    """
+    from app.domain.errors import ChromiumError
+    from app.gui.dialogs.error_dialog import _build_box
+
+    exc = ChromiumError("Profile #003 failed pre-launch diagnostics.")
+    fired: list = []
+    box, callbacks = _build_box(
+        None, exc, actions=[("Fix timezone automatically", lambda: fired.append(True))]
+    )
+    try:
+        box.show()
+        buttons = {button.text(): button for button in box.buttons()}
+        assert set(buttons) >= {"Close", "Fix timezone automatically"}
+        for button in buttons.values():
+            assert button.width() >= button.sizeHint().width() - 2
+        assert len(callbacks) == 1
+    finally:
+        box.close()

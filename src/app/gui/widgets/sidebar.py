@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.gui.utils.theme import SIDEBAR_WIDTH
+from app.gui.i18n import tr
 
 SECTION_PROFILES = "profiles"
 SECTION_PROXIES = "proxies"
@@ -31,11 +32,11 @@ SECTION_LOGS = "logs"
 
 # Frequency-ordered: work first, observability next, app prefs last.
 _SECTIONS = (
-    (SECTION_PROFILES, "PROFILES", "Browser profiles · list, launch, edit (1)"),
-    (SECTION_PROXIES, "PROXIES", "Proxy pool · refresh, check, lookup IP (2)"),
-    (SECTION_CONFIGURATIONS, "CONFIGURATIONS", "Fingerprints · generate, reuse (3)"),
-    (SECTION_LOGS, "LOG", "Live session log · export, clear (4)"),
-    (SECTION_SETTINGS, "SETTINGS", "App preferences · theme, confirmations (5)"),
+    (SECTION_PROFILES, "sidebar.profiles", "sidebar.tip.profiles"),
+    (SECTION_PROXIES, "sidebar.proxies", "sidebar.tip.proxies"),
+    (SECTION_CONFIGURATIONS, "sidebar.configurations", "sidebar.tip.configurations"),
+    (SECTION_LOGS, "sidebar.log", "sidebar.tip.log"),
+    (SECTION_SETTINGS, "sidebar.settings", "sidebar.tip.settings"),
 )
 
 
@@ -71,32 +72,49 @@ class Sidebar(QWidget):
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._buttons: dict[str, QPushButton] = {}
-        for index, (key, label, tip) in enumerate(_SECTIONS):
-            button = QPushButton(label)
+        self._keys: list[str] = []
+        for index, (key, label_key, tip_key) in enumerate(_SECTIONS):
+            button = QPushButton(tr(label_key))
             button.setObjectName("NavButton")
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setToolTip(tip)
+            button.setToolTip(tr(tip_key))
             self._group.addButton(button, index)
             self._buttons[key] = button
+            self._keys.append(key)
             layout.addWidget(button)
 
         layout.addStretch(1)
 
-        self._theme_button = QPushButton("◐  DARK")
+        self._theme_button = QPushButton(tr("sidebar.theme.dark"))
         self._theme_button.setObjectName("NavButton")
         self._theme_button.setCheckable(False)
         self._theme_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._theme_button.setToolTip("Switch light / dark theme (T)")
+        self._theme_button.setToolTip(tr("sidebar.theme.tip"))
         self._theme_button.clicked.connect(self.themeToggleRequested.emit)
         layout.addWidget(self._theme_button)
 
-        footer = QLabel("GUI · MONO LEDGER")
+        footer = QLabel(tr("sidebar.footer"))
         footer.setObjectName("SidebarFooter")
         footer.setContentsMargins(24, 12, 24, 12)
         layout.addWidget(footer)
+        self._footer = footer
+        self._theme_name = "light"
 
         self._group.idClicked.connect(self._on_clicked)
+
+    def retranslate(self, theme: str | None = None) -> None:
+        """Re-apply all captions for the current language."""
+        if theme is not None:
+            self._theme_name = theme
+        for key, label_key, tip_key in _SECTIONS:
+            button = self._buttons.get(key)
+            if button is not None:
+                button.setText(tr(label_key))
+                button.setToolTip(tr(tip_key))
+        self.set_theme_label(self._theme_name)
+        self._theme_button.setToolTip(tr("sidebar.theme.tip"))
+        self._footer.setText(tr("sidebar.footer"))
 
     def select(self, key: str) -> None:
         """Switch the highlighted section without re-emission (programmatic)."""
@@ -106,10 +124,11 @@ class Sidebar(QWidget):
 
     def set_theme_label(self, theme: str) -> None:
         """Reflect the active theme on the toggle button (○ light / ● dark)."""
+        self._theme_name = theme
         if theme == "dark":
-            self._theme_button.setText("●  LIGHT")
+            self._theme_button.setText(tr("sidebar.theme.light"))
         else:
-            self._theme_button.setText("◐  DARK")
+            self._theme_button.setText(tr("sidebar.theme.dark"))
 
     def _on_clicked(self, index: int) -> None:
         key = _SECTIONS[index][0]

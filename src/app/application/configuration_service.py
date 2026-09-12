@@ -83,6 +83,7 @@ class ConfigurationService:
                 self._reject_duplicate_name(name)
         if "timezone" in params:
             self._validate_timezone(params["timezone"])
+        params = self._realign_platform_dependents(current, params)
         self._validate_spoof_fields(current, params)
         updated = self._configurations.update(configuration_id, name=name, **params)
         if updated is None:
@@ -366,6 +367,73 @@ class ConfigurationService:
             candidate = f"{base}-{index}"
             index += 1
         return candidate
+
+    @staticmethod
+    def _realign_platform_dependents(
+        current: BrowserConfiguration, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Rebuild UA / Client Hints / WebGL when the platform changes.
+
+        A macOS fingerprint switched to ``linux`` keeps its old Apple UA and
+        macOS hints, which ``validate_draft`` then rejects
+        (``platform 'linux' mismatches client_hints platform 'macOS'``).
+        Instead of failing, rebuild the derived fields for the new platform
+        — unless the caller passed any of them explicitly (explicit values
+        win and go through validation untouched).
+        """
+        new_platform = params.get("platform")
+        if (
+            new_platform is None
+            or new_platform == current.platform
+            or new_platform not in ("windows", "macos", "linux")
+        ):
+            return params
+        if (
+            "user_agent" in params
+            or "client_hints" in params
+            or "webgl_settings" in params
+        ):
+            return params
+        if not current.user_agent:
+            return params
+
+        from app.application.configuration_generator import (
+            _WEBGL,
+            build_client_hints,
+            build_user_agent,
+            chrome_major,
+            ua_chrome_major,
+        )
+
+        hints = current.client_hints if isinstance(current.client_hints, dict) else {}
+        base_version = str(hints.get("fullVersion") or "")
+        ua_major = ua_chrome_major(current.user_agent or "")
+        if chrome_major(base_version) and (
+            ua_major is None or chrome_major(base_version) == ua_major
+        ):
+            version = base_version
+        elif ua_major is not None:
+            version = f"{ua_major}.0.0.0"
+        else:
+            return params
+
+        browser = "edge" if "Edg/" in (current.user_agent or "") else "chrome"
+        params = dict(params)
+        params["user_agent"] = build_user_agent(browser, new_platform, version)
+        params["client_hints"] = build_client_hints(browser, new_platform, version)
+        old_webgl = (
+            current.webgl_settings
+            if isinstance(current.webgl_settings, dict)
+            else None
+        )
+        if old_webgl is not None:
+            vendor, renderer = _WEBGL[new_platform][0]
+            params["webgl_settings"] = {
+                **old_webgl,
+                "vendor": vendor,
+                "renderer": renderer,
+            }
+        return params
 
     def _log_info(self, source: str, message: str, extra: dict | None = None) -> None:
         if self._log is not None:

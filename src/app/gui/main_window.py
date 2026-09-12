@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.gui.i18n import get_language, set_language, tr
 from app.gui.utils.icons import APP_ICON_PATH
 
 from app.gui.utils.preferences import Preferences
@@ -52,7 +53,13 @@ class MainWindow(QMainWindow):
         self._runner = TaskRunner(self, error_sink=container.logs)
         self._prefs = Preferences(container.settings)
 
-        self.setWindowTitle("ANTIDETECT")
+        # Stored language wins; pages read the global via tr() at construction.
+        try:
+            set_language(self._prefs.get_language(get_language()))
+        except Exception:
+            pass
+
+        self.setWindowTitle(tr("app.title"))
         self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
@@ -99,13 +106,36 @@ class MainWindow(QMainWindow):
 
         self._register_shortcuts()
 
-        self.statusBar().showMessage(
-            f"data dir · {container.config.data_dir}   "
-            f"chrome · {container.config.chromium_path or 'auto'}"
-        )
+        self._refresh_statusbar()
         self.statusBar().setSizeGripEnabled(False)
 
         self._prefs.load_geometry(self)
+
+    # ------------------------------------------------------------ i18n
+
+    def retranslate(self) -> None:
+        """Re-apply the current language to sidebar, all pages and statusbar."""
+        self.setWindowTitle(tr("app.title"))
+        self._sidebar.retranslate(theme=self.current_theme())
+        for page in self._pages.values():
+            if hasattr(page, "retranslate"):
+                try:
+                    page.retranslate()
+                except Exception:
+                    pass
+        self._refresh_statusbar()
+
+    def _refresh_statusbar(self) -> None:
+        try:
+            self.statusBar().showMessage(
+                tr(
+                    "statusbar",
+                    data=str(self._container.config.data_dir),
+                    chrome=str(self._container.config.chromium_path or "auto"),
+                )
+            )
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ sections
 
@@ -176,12 +206,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------ lifecycle
 
     def closeEvent(self, event) -> None:
-        """Persist window geometry and stop background tasks before quit.
-
-        Ordering matters: the Container (and its SQLite connection) is closed
-        from ``QApplication.aboutToQuit`` *after* this runs, so no worker is
-        mid-flight against a closed database.
-        """
         self._prefs.save_geometry(self)
         self._runner.shutdown()
         super().closeEvent(event)

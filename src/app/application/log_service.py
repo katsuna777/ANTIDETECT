@@ -156,9 +156,15 @@ class LogService:
         """
         self._stop_all_tailers()
         cleared = self._repository.clear()
+        try:
+            from app.gui.i18n import tr as _tr
+
+            message = _tr("log.session.started")
+        except Exception:
+            message = "Log session started"
         self.info(
             "app",
-            "Log session started",
+            message,
             extra={"history_cleared": cleared},
         )
         return cleared

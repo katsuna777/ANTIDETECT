@@ -1,13 +1,4 @@
-"""Configuration create/edit dialog: manual fingerprint with timezone picker.
-
-Stays a pure QDialog: it only prepares user choices. Persistence runs through
-``ConfigurationService.create/update_configuration`` on a background worker.
-
-The timezone is a dropdown over SUPPORTED_TIMEZONES (the zones the doctor can
-map to an exit country), so a typo like ``UTC+3`` or ``Moscow`` is impossible
-to submit — the backend validation error that used to surface only at launch
-cannot happen from this dialog.
-"""
+"""Configuration create/edit dialog: manual fingerprint with timezone picker."""
 
 from __future__ import annotations
 
@@ -32,6 +23,7 @@ from app.application.profile_doctor import (
     TIMEZONE_COUNTRY,
     locale_country,
 )
+from app.gui.i18n import tr
 
 _PLATFORMS = ["windows", "macos", "linux"]
 
@@ -43,7 +35,7 @@ class ConfigDialog(QDialog):
         super().__init__(parent)
         creating = config is None
         self.setWindowTitle(
-            "New custom configuration" if creating else f"Edit configuration · {config.name}"
+            tr("dlg.config.new.title") if creating else tr("dlg.config.edit.title", name=config.name)
         )
         self.setMinimumWidth(480)
 
@@ -51,28 +43,25 @@ class ConfigDialog(QDialog):
         layout.setSpacing(16)
 
         title = QLabel(
-            "New custom fingerprint" if creating else f"Edit #{config.id:03d} · {config.name}"
+            tr("dlg.config.new.header") if creating else tr("dlg.config.edit.header", id=config.id, name=config.name)
         )
         title.setObjectName("DialogTitle")
         layout.addWidget(title)
-        subtitle = QLabel(
-            "Only valid timezones are offered — the doctor maps each of them to an exit country."
-        )
+        subtitle = QLabel(tr("dlg.config.subtitle"))
         subtitle.setObjectName("HintLabel")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
         self._syncing = False
 
-        # --- Group 1: identity -------------------------------------------------
-        identity = QGroupBox("1 · Identity")
+        identity = QGroupBox(tr("dlg.group.identity"))
         identity_form = QFormLayout(identity)
         identity_form.setSpacing(10)
 
         self._name = QLineEdit("" if creating else (config.name or ""))
-        self._name.setPlaceholderText("e.g. shop-de-01 · minimum 1 character")
-        self._name.setToolTip("Configuration name — must be unique.")
+        self._name.setPlaceholderText(tr("dlg.config.name.ph"))
+        self._name.setToolTip(tr("dlg.config.name.tip"))
         self._name.setClearButtonEnabled(True)
-        identity_form.addRow("Name *", self._name)
+        identity_form.addRow(tr("dlg.name"), self._name)
 
         self._name_error = QLabel("")
         self._name_error.setObjectName("ErrorLabel")
@@ -80,79 +69,72 @@ class ConfigDialog(QDialog):
         identity_form.addRow("", self._name_error)
         layout.addWidget(identity)
 
-        # --- Group 2: fingerprint ----------------------------------------------
-        fingerprint = QGroupBox("2 · Fingerprint")
+        fingerprint = QGroupBox(tr("dlg.group.fingerprint"))
         fingerprint_form = QFormLayout(fingerprint)
         fingerprint_form.setSpacing(10)
 
         self._platform = QComboBox()
-        self._platform.setToolTip("OS the fingerprint pretends to run on.")
+        self._platform.setToolTip(tr("dlg.platform.tip"))
         self._platform.addItem("—", None)
         for platform in _PLATFORMS:
             self._platform.addItem(platform, platform)
         if not creating:
             self._select(self._platform, config.platform)
-        fingerprint_form.addRow("Platform", self._platform)
+        fingerprint_form.addRow(tr("dlg.platform"), self._platform)
 
         self._language = QComboBox()
         self._language.setEditable(True)
-        self._language.setToolTip(
-            "Browser language — your own choice, never auto-changed. "
-            "Pick from the pool or type any custom tag."
-        )
+        self._language.setToolTip(tr("dlg.language.tip"))
         self._language.addItem("—")
         for language in SUPPORTED_LANGUAGES:
             self._language.addItem(language)
-        # The pool is small (25 entries): show all of them at once instead
-        # of Qt's default 10-rows-plus-scrollbar clipping.
         self._language.setMaxVisibleItems(self._language.count())
         if not creating and config.language:
             if config.language in SUPPORTED_LANGUAGES:
                 self._select_text(self._language, config.language)
             else:
                 self._language.setCurrentText(config.language)
-        fingerprint_form.addRow("Language", self._language)
+        fingerprint_form.addRow(tr("dlg.language"), self._language)
 
         self._locale = QLineEdit("" if creating else (config.locale or ""))
-        self._locale.setPlaceholderText("e.g. en-US, de-DE")
-        self._locale.setToolTip("Locale tag with region — should match the timezone country.")
-        fingerprint_form.addRow("Locale", self._locale)
+        self._locale.setPlaceholderText(tr("dlg.locale.ph"))
+        self._locale.setToolTip(tr("dlg.locale.tip"))
+        fingerprint_form.addRow(tr("dlg.locale"), self._locale)
 
         self._timezone = QComboBox()
-        self._timezone.setToolTip(
-            "IANA timezone. Only zones the app can map to a country are listed."
-        )
+        self._timezone.setToolTip(tr("dlg.timezone.tip"))
         self._timezone.addItem("—", None)
         for zone in SUPPORTED_TIMEZONES:
             self._timezone.addItem(zone, zone)
         if not creating:
             self._select(self._timezone, config.timezone)
-        fingerprint_form.addRow("Timezone", self._timezone)
-        geo_hint = QLabel("Timezone ↔ locale sync automatically · language is always yours.")
+        fingerprint_form.addRow(tr("dlg.timezone"), self._timezone)
+        geo_hint = QLabel(tr("dlg.geo.hint"))
         geo_hint.setObjectName("HintLabel")
         fingerprint_form.addRow("", geo_hint)
         layout.addWidget(fingerprint)
 
-        # --- Group 3: screen ----------------------------------------------------
-        screen = QGroupBox("3 · Screen (optional)")
+        screen = QGroupBox(tr("dlg.group.screen"))
         screen_form = QFormLayout(screen)
         screen_form.setSpacing(10)
 
         self._width = QSpinBox()
         self._width.setRange(0, 7680)
         self._width.setSpecialValueText("—")
+        self._width.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self._width.setValue(config.screen_width if not creating and config.screen_width else 0)
-        self._width.setToolTip("Screen width in pixels (0 = leave unset).")
-        screen_form.addRow("Width", self._width)
+        self._width.setToolTip(tr("dlg.width.tip"))
+        screen_form.addRow(tr("dlg.width"), self._width)
 
         self._height = QSpinBox()
         self._height.setRange(0, 4320)
         self._height.setSpecialValueText("—")
+        self._height.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self._height.setValue(config.screen_height if not creating and config.screen_height else 0)
-        self._height.setToolTip("Screen height in pixels (0 = leave unset).")
-        screen_form.addRow("Height", self._height)
+        self._height.setToolTip(tr("dlg.height.tip"))
+        screen_form.addRow(tr("dlg.height"), self._height)
 
-        screen_hint = QLabel("Width and height must be set together or both left unset.")
+        screen_hint = QLabel(tr("dlg.screen.hint"))
         screen_hint.setObjectName("HintLabel")
         screen_form.addRow("", screen_hint)
         layout.addWidget(screen)
@@ -178,7 +160,6 @@ class ConfigDialog(QDialog):
         return self._name.text().strip()
 
     def values(self) -> dict:
-        """Parameters for create/update_configuration (None = untouched)."""
         language = self._language.currentText().strip()
         if not language or language == "—":
             language = None
@@ -204,13 +185,12 @@ class ConfigDialog(QDialog):
         if ok:
             self._name_error.hide()
         else:
-            self._name_error.setText("Name cannot be empty — give the configuration a name.")
+            self._name_error.setText(tr("dlg.config.name.empty"))
             self._name_error.show()
 
     # ------------------------------------------------------------ geo sync
 
     def _sync_from_timezone(self) -> None:
-        """Timezone picked -> align locale to its country (language untouched)."""
         if self._syncing:
             return
         timezone = self._timezone.currentData()
@@ -223,7 +203,6 @@ class ConfigDialog(QDialog):
             self._apply_geo(locale=locale, timezone=timezone)
 
     def _sync_from_locale(self) -> None:
-        """Locale typed -> align timezone to its country (language untouched)."""
         if self._syncing:
             return
         country = locale_country(self._locale.text().strip())
@@ -251,6 +230,5 @@ class ConfigDialog(QDialog):
 
     @staticmethod
     def _select_text(combo: QComboBox, value: str) -> None:
-        """Select a combo entry by visible text (for the editable language box)."""
         index = combo.findText(value)
         combo.setCurrentIndex(index if index >= 0 else 0)

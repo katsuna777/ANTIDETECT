@@ -109,3 +109,14 @@ def test_unknown_locale_leaves_fields_untouched():
     # No known country: previous geo stays, nothing crashes.
     assert values["timezone"] == "Asia/Tokyo"
     assert values["locale"] == "xx-YY"
+
+
+def test_screen_spinboxes_have_no_button_symbols():
+    from PySide6.QtWidgets import QAbstractSpinBox
+
+    dialog = ConfigDialog()
+    try:
+        assert dialog._width.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+        assert dialog._height.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+    finally:
+        dialog.close()

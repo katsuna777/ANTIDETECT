@@ -24,6 +24,7 @@ from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import QFrame, QGraphicsOpacityEffect, QLabel, QProgressBar, QSpacerItem, QVBoxLayout, QWidget
 
 from app.gui.utils.theme import INK, PAPER
+from app.gui.i18n import tr
 
 # --------------------------------------------------------------------------- #
 # Токены — меняйте только здесь (hex-коды). По умолчанию строгий монохром.
@@ -40,13 +41,13 @@ ACCENT_TO = PAPER          # монохром; для неона подстав�
 FADE_DELAY_MS = 500        # пауза на 100% перед исчезновением (400–600мс по ТЗ)
 FADE_DURATION_MS = 700     # длительность opacity-fade
 
-_STAGES = (
-    (12, "Ядро…"),
-    (34, "Профили…"),
-    (58, "Прокси…"),
-    (79, "Chromium…"),
-    (93, "Интерфейс…"),
-    (100, "Готово"),
+_STAGE_KEYS = (
+    (12, "splash.core"),
+    (34, "splash.profiles"),
+    (58, "splash.proxies"),
+    (79, "splash.chromium"),
+    (93, "splash.ui"),
+    (100, "splash.done"),
 )
 
 
@@ -145,7 +146,7 @@ class SplashScreen(QWidget):
         layout.addItem(self._gap_bar)
         layout.addWidget(self._bar, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self._stage = QLabel("Инициализация…")
+        self._stage = QLabel(tr("splash.init"))
         self._stage.setObjectName("SplashStage")
         self._stage.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._gap_stage = QSpacerItem(0, 14)
@@ -295,9 +296,9 @@ class SplashScreen(QWidget):
             # Формат с фиксированной шириной — цифры не прыгают (tabular-nums)
             self._percent.setText(f"{n:3d} %")
             self._count.setText(f"{n} / 100")
-            for bound, label in _STAGES:
+            for bound, key in _STAGE_KEYS:
                 if n <= bound:
-                    self._stage.setText(label)
+                    self._stage.setText(tr(key))
                     break
         self._bar.setValue(int(v * 10))
 
