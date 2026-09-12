@@ -12,9 +12,13 @@ ROOT = Path(os.path.abspath("."))
 SRC = ROOT / "src"
 RES = SRC / "app" / "gui" / "resources"
 
-ICON = RES / "icon.png"
 ICON_ICO = RES / "icon.ico"
-icon_arg = str(ICON_ICO) if ICON_ICO.is_file() else (str(ICON) if ICON.is_file() else None)
+# Windows EXE accepts only .ico (a .png aborts the build unless Pillow is
+# installed, so never fall back to it — fail visibly instead of shipping
+# an icon-less exe silently).
+icon_arg = str(ICON_ICO) if ICON_ICO.is_file() else None
+if icon_arg is None:
+    raise SystemExit(f"missing required icon: {ICON_ICO}")
 
 datas = []
 if (RES / "icon.png").is_file():
