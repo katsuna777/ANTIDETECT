@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import bisect
 import threading
+import time
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
@@ -20,8 +21,18 @@ if TYPE_CHECKING:
     from app.di import Container
     from app.gui.workers.task_runner import TaskRunner
 
-_PROXY_CHECK_WORKERS = 400
+# 400 threads thrashed the frozen .app: GIL/context-switch overhead, DNS and
+# socket pressure plus upstream rate limits turned into mass false failures
+# ("skipped" proxies) while tens of thousands of per-proxy widget updates
+# froze the UI. 64 network-bound workers saturate throughput without that.
+_PROXY_CHECK_WORKERS = 64
 _PROXY_CHECK_TIMEOUT = 5.0
+# Live-list rows are inserted in chunks with repaint disabled: a single
+# QListWidget.insertItem() relayouts the whole list, so per-proxy inserts
+# degrade to O(n^2) on pools of thousands. Progress widgets are refreshed at
+# most ~8 times per second; the final (done == total) update always applies.
+_LIVE_FLUSH_CHUNK = 100
+_PROGRESS_MIN_INTERVAL_S = 0.12
 
 
 class ProxiesPage(PlaceholderPage):
@@ -78,6 +89,10 @@ class ProxiesPage(PlaceholderPage):
         self._batch_total = 0
         self._live_working = 0
         self._live_dead = 0
+        self._live_latencies: list[int] = []
+        self._pending: list[tuple[int, object]] = []
+        self._last_progress_ts = 0.0
+        self._last_metrics_ts = 0.0
         self.reload()
 
     # ------------------------------------------------------------ retranslate
@@ -152,6 +167,9 @@ class ProxiesPage(PlaceholderPage):
         self._live_working = 0
         self._live_dead = 0
         self._live_latencies: list[int] = []
+        self._pending = []
+        self._last_progress_ts = 0.0
+        self._last_metrics_ts = 0.0
         self._batch_total = 0
         self._total.set_value(0)
         self._working.set_value(0)
@@ -199,6 +217,11 @@ class ProxiesPage(PlaceholderPage):
 
     def _show_progress(self, done: int, total: int) -> None:
         self._batch_total = total
+        final = total and done >= total
+        now = time.monotonic()
+        if not final and now - self._last_progress_ts < _PROGRESS_MIN_INTERVAL_S:
+            return
+        self._last_progress_ts = now
         self._progress.setRange(0, max(1, total))
         self._progress.setValue(done)
         pct = int(done * 100 / total) if total else 0
@@ -213,27 +236,45 @@ class ProxiesPage(PlaceholderPage):
         self._dead.set_value(self._live_dead)
 
     def _append_proxy(self, outcome: object) -> None:
-        proxy = outcome.proxy
         if not outcome.ok:
             self._live_dead += 1
-            self._refresh_live_metrics()
+            now = time.monotonic()
+            if now - self._last_metrics_ts >= _PROGRESS_MIN_INTERVAL_S:
+                self._last_metrics_ts = now
+                self._refresh_live_metrics()
             return
         self._live_working += 1
-        latency = outcome.latency_ms
-        if latency is None:
-            latency = 10 ** 9
-        idx = bisect.bisect_left(self._live_latencies, latency)
-        self._live_latencies.insert(idx, latency)
-        self._live.insertItem(
-            idx,
-            self._format_row(
-                self._live_working,
-                proxy,
-                outcome.latency_ms,
-                outcome.country_code,
-                outcome.country,
-            ),
-        )
+        # Sequence number is stamped at arrival so rows keep the original
+        # order semantics even though widgets are inserted in chunks.
+        self._pending.append((self._live_working, outcome))
+        if len(self._pending) >= _LIVE_FLUSH_CHUNK:
+            self._flush_pending()
+
+    def _flush_pending(self) -> None:
+        if not self._pending:
+            return
+        pending, self._pending = self._pending, []
+        self._live.setUpdatesEnabled(False)
+        try:
+            for seq, outcome in pending:
+                proxy = outcome.proxy
+                latency = outcome.latency_ms
+                if latency is None:
+                    latency = 10 ** 9
+                idx = bisect.bisect_left(self._live_latencies, latency)
+                self._live_latencies.insert(idx, latency)
+                self._live.insertItem(
+                    idx,
+                    self._format_row(
+                        seq,
+                        proxy,
+                        outcome.latency_ms,
+                        outcome.country_code,
+                        outcome.country,
+                    ),
+                )
+        finally:
+            self._live.setUpdatesEnabled(True)
         self._refresh_live_metrics()
 
     @staticmethod
@@ -263,28 +304,34 @@ class ProxiesPage(PlaceholderPage):
         self._live_working = 0
         self._live_dead = 0
         self._batch_total = 0
-        for row in working:
-            self._live_working += 1
-            latency = (
-                row.latency_ms if row.latency_ms is not None else 10 ** 9
-            )
-            idx = bisect.bisect_left(self._live_latencies, latency)
-            self._live_latencies.insert(idx, latency)
-            self._live.insertItem(
-                idx,
-                self._format_row(
-                    self._live_working,
-                    row.proxy,
-                    row.latency_ms,
-                    row.country_code,
-                    row.country,
-                ),
-            )
+        self._pending = []
+        self._live.setUpdatesEnabled(False)
+        try:
+            for row in working:
+                self._live_working += 1
+                latency = (
+                    row.latency_ms if row.latency_ms is not None else 10 ** 9
+                )
+                idx = bisect.bisect_left(self._live_latencies, latency)
+                self._live_latencies.insert(idx, latency)
+                self._live.insertItem(
+                    idx,
+                    self._format_row(
+                        self._live_working,
+                        row.proxy,
+                        row.latency_ms,
+                        row.country_code,
+                        row.country,
+                    ),
+                )
+        finally:
+            self._live.setUpdatesEnabled(True)
         self._total.set_value(len(stored))
         self._working.set_value(self._live_working)
         self._dead.set_value(len(stored) - self._live_working)
 
     def _apply_check_summary(self, summary: object) -> None:
+        self._flush_pending()
         removed = getattr(summary, "removed", 0)
         stopped = self._stop_event is not None and self._stop_event.is_set()
         prefix = tr("proxies.summary.stopped") if stopped else tr("proxies.summary.checked")
@@ -307,6 +354,7 @@ class ProxiesPage(PlaceholderPage):
         self.reload()
 
     def _reset_busy(self) -> None:
+        self._flush_pending()
         self._refresh.setEnabled(True)
         self._lookup.setEnabled(True)
         self._stop.setEnabled(False)
