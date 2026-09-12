@@ -38,7 +38,7 @@ def test_mono_palette_is_unchanged():
     assert palette_for("dark").paper == "#0e0e0e"
 
 
-@pytest.mark.parametrize("accent", ["yellow", "blue", "green"])
+@pytest.mark.parametrize("accent", [a for a in ACCENTS if a != "mono"])
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_accent_replaces_ink_but_keeps_paper(theme, accent):
     pal = palette_for(theme, accent)
@@ -81,7 +81,8 @@ def test_settings_page_offers_four_accents(gui_container):
         page._accent_combo.itemData(i)
         for i in range(page._accent_combo.count())
     ]
-    assert values == ["mono", "yellow", "blue", "green"]
+    assert values == list(Preferences.ACCENTS)
+    assert len(values) == 10
 
 
 # ------------------------------------------------------------------ flow rows
@@ -171,3 +172,17 @@ def test_configurations_page_uses_flow_rows(gui_container):
     assert page._timezone_filter.count() > 40
     assert isinstance(page._new, QPushButton)
     page.close()
+
+
+@pytest.mark.parametrize("accent", [a for a in ACCENTS])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_scrollbars_keep_gap_from_content(theme, accent):
+    """Regression: the scrollbar must not sit flush on block borders.
+
+    Both orientations keep a paper gap on the content side.
+    """
+    qss = build_stylesheet(theme=theme, accent=accent)
+    assert "QScrollBar:vertical" in qss
+    assert "margin: 0 0 0 8px" in qss
+    assert "QScrollBar:horizontal" in qss
+    assert "margin: 8px 0 0 0" in qss

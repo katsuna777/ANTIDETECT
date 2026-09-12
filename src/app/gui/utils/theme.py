@@ -30,16 +30,33 @@ from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 ThemeName = Literal["light", "dark"]
-AccentName = Literal["mono", "yellow", "blue", "green"]
+AccentName = Literal[
+    "mono",
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "cyan",
+    "blue",
+    "purple",
+    "pink",
+    "lime",
+]
 
 #: Accent foregrounds. ``mono`` keeps the strict black-on-white /
 #: white-on-black ledger; any other accent replaces the foreground ink
 #: (text, borders, fills) while the paper background never changes.
 ACCENTS: dict[str, str | None] = {
     "mono": None,
+    "red": "#FF5A5A",
+    "orange": "#FF9F2E",
     "yellow": "#FFD60A",
-    "blue": "#3B9DFF",
     "green": "#35D07F",
+    "cyan": "#35C4DC",
+    "blue": "#3B9DFF",
+    "purple": "#B388FF",
+    "pink": "#FF6EC7",
+    "lime": "#9ACD32",
 }
 
 _ACCENT_SELECTION_DARK = "#0e0e0e"  # text on accent fills, dark theme
@@ -95,7 +112,7 @@ def normalize_theme(name: str | None) -> ThemeName:
 def normalize_accent(name: str | None) -> AccentName:
     """Stored accent color; unknown values fall back to strict monochrome."""
     normalized = (name or "mono").strip().lower()
-    if normalized in ("yellow", "blue", "green"):
+    if normalized in ACCENTS and normalized != "mono":
         return normalized  # type: ignore[return-value]
     return "mono"
 
@@ -495,7 +512,7 @@ QScrollBar:vertical {
     width: 12px;
     border: none;
     border-left: 1px solid $ink;
-    margin: 0;
+    margin: 0 0 0 8px;
 }
 
 QScrollBar::handle:vertical {
@@ -508,7 +525,7 @@ QScrollBar:horizontal {
     height: 12px;
     border: none;
     border-top: 1px solid $ink;
-    margin: 0;
+    margin: 8px 0 0 0;
 }
 
 QScrollBar::handle:horizontal {
@@ -638,7 +655,7 @@ def current_accent(app: QApplication | None = None) -> str:
     try:
         if app is not None:
             value = app.property("antidetectAccent")
-            if value in ("mono", "yellow", "blue", "green"):
+            if value in ACCENTS:
                 return str(value)
     except Exception:
         pass

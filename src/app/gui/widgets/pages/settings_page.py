@@ -82,9 +82,15 @@ class SettingsPage(PlaceholderPage):
         appearance_layout.addWidget(self._theme_combo)
         self._accent_combo = QComboBox()
         self._accent_combo.addItem("Mono · strict ledger", "mono")
+        self._accent_combo.addItem("Red accent", "red")
+        self._accent_combo.addItem("Orange accent", "orange")
         self._accent_combo.addItem("Yellow accent", "yellow")
-        self._accent_combo.addItem("Blue accent", "blue")
         self._accent_combo.addItem("Green accent", "green")
+        self._accent_combo.addItem("Cyan accent", "cyan")
+        self._accent_combo.addItem("Blue accent", "blue")
+        self._accent_combo.addItem("Purple accent", "purple")
+        self._accent_combo.addItem("Pink accent", "pink")
+        self._accent_combo.addItem("Lime accent", "lime")
         self._accent_combo.setToolTip(
             "Accent foreground: replaces the black/white ink, paper background stays. Saved in gui.accent."
         )

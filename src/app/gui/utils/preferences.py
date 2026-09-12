@@ -37,10 +37,18 @@ class Preferences:
     THEME_LIGHT = "light"
     THEME_DARK = "dark"
     ACCENT_MONO = "mono"
-    ACCENT_YELLOW = "yellow"
-    ACCENT_BLUE = "blue"
-    ACCENT_GREEN = "green"
-    ACCENTS = (ACCENT_MONO, ACCENT_YELLOW, ACCENT_BLUE, ACCENT_GREEN)
+    ACCENTS = (
+        "mono",
+        "red",
+        "orange",
+        "yellow",
+        "green",
+        "cyan",
+        "blue",
+        "purple",
+        "pink",
+        "lime",
+    )
 
     def __init__(self, settings: SettingsRepository) -> None:
         self._settings = settings
@@ -83,7 +91,7 @@ class Preferences:
     # ------------------------------------------------------------- accent
 
     def get_accent(self, default: str = ACCENT_MONO) -> str:
-        """Stored accent foreground (mono/yellow/blue/green)."""
+        """Stored accent foreground (mono/red/orange/yellow/green/cyan/blue/purple/pink/lime)."""
         raw = self.get(self.KEY_ACCENT).strip().lower()
         if raw in self.ACCENTS:
             return raw
