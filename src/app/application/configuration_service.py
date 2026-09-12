@@ -14,6 +14,11 @@ from app.application.ports import BrowserConfigurationRepository
 from app.domain.errors import BrowserConfigurationNotFoundError
 from app.domain.models.browser_configuration import BrowserConfiguration
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.application.ports import LogSink
+
 _NAME_SAFE = re.compile(r"[\w .()\[\]-]+")
 
 
@@ -22,9 +27,11 @@ class ConfigurationService:
         self,
         configurations: BrowserConfigurationRepository,
         generator: ConfigurationGenerator,
+        log_sink: "LogSink | None" = None,
     ) -> None:
         self._configurations = configurations
         self._generator = generator
+        self._log = log_sink
 
     # ---------------------------------------------------------------- reads
 
@@ -49,7 +56,18 @@ class ConfigurationService:
         self._reject_duplicate_name(name)
         self._validate_timezone(params.get("timezone"))
         self._validate_spoof_fields(None, params)
-        return self._configurations.create(name=name, **params)
+        created = self._configurations.create(name=name, **params)
+        self._log_info(
+            "configurations",
+            f"Configuration #{created.id} '{created.name}' created",
+            extra={
+                "configuration_id": created.id,
+                "name": created.name,
+                "platform": created.platform,
+                "timezone": created.timezone,
+            },
+        )
+        return created
 
     def update_configuration(
         self,
@@ -69,6 +87,20 @@ class ConfigurationService:
         updated = self._configurations.update(configuration_id, name=name, **params)
         if updated is None:
             raise BrowserConfigurationNotFoundError(configuration_id)
+        changed = sorted(
+            key for key, value in params.items() if value is not None
+        )
+        if name is not None and name != current.name:
+            changed = sorted(set(changed) | {"name"})
+        self._log_info(
+            "configurations",
+            f"Configuration #{configuration_id} '{updated.name}' updated",
+            extra={
+                "configuration_id": configuration_id,
+                "name": updated.name,
+                "changed": changed,
+            },
+        )
         return updated
 
     def align_configuration_geo(
@@ -90,12 +122,23 @@ class ConfigurationService:
                 "Pick the timezone manually from the supported list."
             )
         language, locale, timezone = defaults
-        return self.update_configuration(
+        updated = self.update_configuration(
             configuration_id,
             language=language,
             locale=locale,
             timezone=timezone,
         )
+        self._log_info(
+            "configurations",
+            f"Configuration #{configuration_id} geo auto-fixed to {code}",
+            extra={
+                "configuration_id": configuration_id,
+                "country": code,
+                "timezone": timezone,
+                "locale": locale,
+            },
+        )
+        return updated
 
     @staticmethod
     def _validate_timezone(timezone: Any) -> None:
@@ -170,11 +213,18 @@ class ConfigurationService:
                     brand["version"] = str(major)
                 patched_brands.append(brand)
             client_hints["brands"] = patched_brands
-        return self.update_configuration(
+        updated = self.update_configuration(
             configuration_id,
             user_agent=user_agent,
             client_hints=client_hints,
         )
+        self._log_info(
+            "configurations",
+            f"Configuration #{configuration_id} browser version auto-fixed "
+            f"to Chrome/{major}",
+            extra={"configuration_id": configuration_id, "chrome_major": major},
+        )
+        return updated
 
     @staticmethod
     def _validate_spoof_fields(
@@ -225,7 +275,21 @@ class ConfigurationService:
         name = name or self._default_generated_name(base=template or "random")
         name = self._normalize_name(name)
         self._reject_duplicate_name(name)
-        return self._configurations.create(name=name, **params)
+        created = self._configurations.create(name=name, **params)
+        self._log_info(
+            "configurations",
+            f"Configuration #{created.id} '{created.name}' generated"
+            + (f" from template '{template}'" if template else " (random)")
+            + (f" for {platform}" if platform else ""),
+            extra={
+                "configuration_id": created.id,
+                "name": created.name,
+                "template": template,
+                "platform": created.platform,
+                "timezone": created.timezone,
+            },
+        )
+        return created
 
     def duplicate_configuration(
         self,
@@ -251,6 +315,16 @@ class ConfigurationService:
             hardware_settings=source.hardware_settings,
             client_hints=source.client_hints,
         )
+        self._log_info(
+            "configurations",
+            f"Configuration #{source.id} duplicated to "
+            f"#{created.id} '{created.name}'",
+            extra={
+                "configuration_id": created.id,
+                "name": created.name,
+                "source_id": source.id,
+            },
+        )
         return created
 
     def delete_configuration(self, configuration_id: int) -> None:
@@ -259,6 +333,11 @@ class ConfigurationService:
         # Profiles referencing this configuration are detached (ON DELETE SET
         # NULL), so deleting a configuration never orphans a profile.
         self._configurations.delete(configuration_id)
+        self._log_info(
+            "configurations",
+            f"Configuration #{configuration_id} deleted",
+            extra={"configuration_id": configuration_id},
+        )
 
     def list_templates(self) -> list[str]:
         return self._generator.list_templates()
@@ -287,6 +366,10 @@ class ConfigurationService:
             candidate = f"{base}-{index}"
             index += 1
         return candidate
+
+    def _log_info(self, source: str, message: str, extra: dict | None = None) -> None:
+        if self._log is not None:
+            self._log.info(source, message, extra)
 
 
 def _infer_platform(user_agent: str) -> str | None:

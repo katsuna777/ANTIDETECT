@@ -49,7 +49,7 @@ class MainWindow(QMainWindow):
     def __init__(self, container: "Container", parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._container = container
-        self._runner = TaskRunner(self)
+        self._runner = TaskRunner(self, error_sink=container.logs)
         self._prefs = Preferences(container.settings)
 
         self.setWindowTitle("Antidetect")

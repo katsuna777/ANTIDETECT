@@ -97,6 +97,13 @@ class ProxiesPage(PlaceholderPage):
             on_result=self._apply_summary,
             on_error=lambda exc: show_error(self, exc),
         )
+        # Repopulate the list from the stored pool so it survives restarts:
+        # it mirrors the database until REFRESH POOL wipes it.
+        self._runner.submit(
+            workers.tasks.list_proxies(self._container),
+            on_result=self._apply_stored_proxies,
+            on_error=lambda exc: show_error(self, exc),
+        )
 
     def _run(self) -> None:
         """REFRESH POOL: wipe the pool, collect a fresh one, check it live."""
@@ -157,6 +164,7 @@ class ProxiesPage(PlaceholderPage):
         if self._stop_event is not None:
             self._stop_event.set()
             self._stop.setEnabled(False)
+            self._container.logs.info("proxy", "Proxy check stopped by user")
             self._result.setText("Stopping…")
 
     def _lookup_ip(self) -> None:
@@ -164,12 +172,18 @@ class ProxiesPage(PlaceholderPage):
         self._result.setText("Resolving public IP…")
         self._runner.submit(
             workers.tasks.lookup_ip(self._container),
-            on_result=lambda ip: self._result.setText(
-                f"Public IP: {ip}" if ip else "Public IP could not be resolved."
-            ),
+            on_result=self._apply_lookup_ip,
             on_error=lambda exc: show_error(self, exc),
             on_finished=lambda: self._lookup.setEnabled(True),
         )
+
+    def _apply_lookup_ip(self, ip: object) -> None:
+        if ip:
+            self._container.logs.info("proxy", "Public IP resolved", extra={"ip": str(ip)})
+            self._result.setText(f"Public IP: {ip}")
+        else:
+            self._container.logs.warn("proxy", "Public IP could not be resolved")
+            self._result.setText("Public IP could not be resolved.")
 
     # ------------------------------------------------------------ results
 
@@ -213,16 +227,73 @@ class ProxiesPage(PlaceholderPage):
         latency = outcome.latency_ms
         if latency is None:
             latency = 10 ** 9
-        latency_ms_str = (
-            f"{outcome.latency_ms}ms" if outcome.latency_ms is not None else "—"
-        )
-        country = country_label(outcome.country_code, outcome.country)
-        rows = self._live_working
         idx = bisect.bisect_left(self._live_latencies, latency)
         self._live_latencies.insert(idx, latency)
-        row = f"#{rows:04d} · {proxy.id:05d} · {proxy.host_port} · WORKING · {latency_ms_str} · {country}"
-        self._live.insertItem(idx, row)
+        self._live.insertItem(
+            idx,
+            self._format_row(
+                self._live_working,
+                proxy,
+                outcome.latency_ms,
+                outcome.country_code,
+                outcome.country,
+            ),
+        )
         self._refresh_live_metrics()
+
+    @staticmethod
+    def _format_row(seq: int, proxy, latency_ms, country_code, country) -> str:
+        latency_ms_str = f"{latency_ms}ms" if latency_ms is not None else "—"
+        location = country_label(country_code, country)
+        return (
+            f"#{seq:04d} · {proxy.id:05d} · {proxy.host_port} · "
+            f"WORKING · {latency_ms_str} · {location}"
+        )
+
+    def _apply_stored_proxies(self, rows: object) -> None:
+        """Rebuild the list from the stored pool (persistence across restarts).
+
+        Shows working proxies sorted by latency, exactly like the live
+        stream. Skipped while a check run is streaming — its own rows own
+        the list then. Only REFRESH POOL clears the list (see ``_run``).
+        """
+        if not self._refresh.isEnabled():
+            return
+        stored = list(rows or [])
+        working = [
+            row for row in stored
+            if row.proxy.status is ProxyStatus.WORKING
+        ]
+        working.sort(
+            key=lambda row: (
+                row.latency_ms if row.latency_ms is not None else 10 ** 9
+            )
+        )
+        self._live.clear()
+        self._live_latencies = []
+        self._live_working = 0
+        self._live_dead = 0
+        self._batch_total = 0
+        for row in working:
+            self._live_working += 1
+            latency = (
+                row.latency_ms if row.latency_ms is not None else 10 ** 9
+            )
+            idx = bisect.bisect_left(self._live_latencies, latency)
+            self._live_latencies.insert(idx, latency)
+            self._live.insertItem(
+                idx,
+                self._format_row(
+                    self._live_working,
+                    row.proxy,
+                    row.latency_ms,
+                    row.country_code,
+                    row.country,
+                ),
+            )
+        self._total.set_value(len(stored))
+        self._working.set_value(self._live_working)
+        self._dead.set_value(len(stored) - self._live_working)
 
     def _apply_check_summary(self, summary: object) -> None:
         removed = getattr(summary, "removed", 0)

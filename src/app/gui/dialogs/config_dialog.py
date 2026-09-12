@@ -24,8 +24,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.application.configuration_generator import (
+    SUPPORTED_LANGUAGES,
     country_defaults,
-    country_for_language,
 )
 from app.application.profile_doctor import (
     SUPPORTED_TIMEZONES,
@@ -94,9 +94,20 @@ class ConfigDialog(QDialog):
             self._select(self._platform, config.platform)
         fingerprint_form.addRow("Platform", self._platform)
 
-        self._language = QLineEdit("" if creating else (config.language or ""))
-        self._language.setPlaceholderText("e.g. en")
-        self._language.setToolTip("Language tag, e.g. en, de, ru.")
+        self._language = QComboBox()
+        self._language.setEditable(True)
+        self._language.setToolTip(
+            "Browser language — your own choice, never auto-changed. "
+            "Pick from the pool or type any custom tag."
+        )
+        self._language.addItem("—")
+        for language in SUPPORTED_LANGUAGES:
+            self._language.addItem(language)
+        if not creating and config.language:
+            if config.language in SUPPORTED_LANGUAGES:
+                self._select_text(self._language, config.language)
+            else:
+                self._language.setCurrentText(config.language)
         fingerprint_form.addRow("Language", self._language)
 
         self._locale = QLineEdit("" if creating else (config.locale or ""))
@@ -114,7 +125,7 @@ class ConfigDialog(QDialog):
         if not creating:
             self._select(self._timezone, config.timezone)
         fingerprint_form.addRow("Timezone", self._timezone)
-        geo_hint = QLabel("Timezone ↔ locale/language sync automatically.")
+        geo_hint = QLabel("Timezone ↔ locale sync automatically · language is always yours.")
         geo_hint.setObjectName("HintLabel")
         fingerprint_form.addRow("", geo_hint)
         layout.addWidget(fingerprint)
@@ -155,7 +166,6 @@ class ConfigDialog(QDialog):
         self._name.textChanged.connect(self._validate)
         self._timezone.currentIndexChanged.connect(self._sync_from_timezone)
         self._locale.textChanged.connect(self._sync_from_locale)
-        self._language.textChanged.connect(self._sync_from_language)
         self._validate()
 
     # ------------------------------------------------------------ values
@@ -166,7 +176,9 @@ class ConfigDialog(QDialog):
 
     def values(self) -> dict:
         """Parameters for create/update_configuration (None = untouched)."""
-        language = self._language.text().strip() or None
+        language = self._language.currentText().strip()
+        if not language or language == "—":
+            language = None
         locale = self._locale.text().strip() or None
         width = self._width.value() or None
         height = self._height.value() or None
@@ -195,7 +207,7 @@ class ConfigDialog(QDialog):
     # ------------------------------------------------------------ geo sync
 
     def _sync_from_timezone(self) -> None:
-        """Timezone picked -> align locale + language to its country."""
+        """Timezone picked -> align locale to its country (language untouched)."""
         if self._syncing:
             return
         timezone = self._timezone.currentData()
@@ -204,32 +216,26 @@ class ConfigDialog(QDialog):
         country = TIMEZONE_COUNTRY.get(timezone)
         defaults = country_defaults(country) if country else None
         if defaults is not None:
-            self._apply_geo(*defaults)
+            _language, locale, _timezone = defaults
+            self._apply_geo(locale=locale, timezone=timezone)
 
     def _sync_from_locale(self) -> None:
-        """Locale typed -> align timezone + language to its country."""
+        """Locale typed -> align timezone to its country (language untouched)."""
         if self._syncing:
             return
         country = locale_country(self._locale.text().strip())
         defaults = country_defaults(country) if country else None
         if defaults is not None:
-            self._apply_geo(*defaults)
+            _language, _locale, timezone = defaults
+            self._apply_geo(timezone=timezone)
 
-    def _sync_from_language(self) -> None:
-        """Language typed -> align timezone + locale (first matching country)."""
-        if self._syncing:
-            return
-        country = country_for_language(self._language.text())
-        defaults = country_defaults(country) if country else None
-        if defaults is not None:
-            self._apply_geo(*defaults)
-
-    def _apply_geo(self, language: str, locale: str, timezone: str) -> None:
+    def _apply_geo(self, locale: str | None = None, timezone: str | None = None) -> None:
         self._syncing = True
         try:
-            self._language.setText(language)
-            self._locale.setText(locale)
-            self._select(self._timezone, timezone)
+            if locale is not None:
+                self._locale.setText(locale)
+            if timezone is not None:
+                self._select(self._timezone, timezone)
         finally:
             self._syncing = False
 
@@ -238,4 +244,10 @@ class ConfigDialog(QDialog):
     @staticmethod
     def _select(combo: QComboBox, value) -> None:
         index = combo.findData(value)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+
+    @staticmethod
+    def _select_text(combo: QComboBox, value: str) -> None:
+        """Select a combo entry by visible text (for the editable language box)."""
+        index = combo.findText(value)
         combo.setCurrentIndex(index if index >= 0 else 0)

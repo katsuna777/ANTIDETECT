@@ -149,10 +149,16 @@ class LogsPage(PlaceholderPage):
         self._result.setText("Exporting…")
         self._runner.submit(
             workers.tasks.export_logs(self._container, Path(path)),
-            on_result=lambda p: self._result.setText(f"Exported {self._list.count()} rows → {p}"),
+            on_result=lambda p: self._export_done(p),
             on_error=lambda exc: self._result.setText(f"Export failed: {exc}"),
             on_finished=lambda: self._export.setEnabled(True),
         )
+
+    def _export_done(self, path: object) -> None:
+        self._container.logs.info(
+            "gui", f"Log exported", extra={"path": str(path)}
+        )
+        self._result.setText(f"Exported {self._list.count()} rows → {path}")
 
     def _clear_logs(self) -> None:
         self._result.setText("Clearing log…")
@@ -165,6 +171,9 @@ class LogsPage(PlaceholderPage):
     def _apply_clear(self, cleared: object) -> None:
         self._list.clear()
         self._last_id = 0
+        self._container.logs.info(
+            "gui", "Log cleared", extra={"cleared": cleared}
+        )
         self._result.setText(f"Cleared {cleared} entries.")
         self._refresh_count()
 

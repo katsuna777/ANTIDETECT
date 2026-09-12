@@ -28,6 +28,11 @@ from app.domain.errors import (
 )
 from app.domain.models.profile import Profile
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.application.ports import LogSink
+
 _COOKIE_CANDIDATES = ("Default/Cookies", "Cookies")
 
 
@@ -45,10 +50,12 @@ class CookieService:
         profiles: ProfileRepository,
         browsers: BrowserManager,
         export_dir: Path,
+        log_sink: "LogSink | None" = None,
     ) -> None:
         self._profiles = profiles
         self._browsers = browsers
         self._export_dir = export_dir
+        self._log = log_sink
 
     # ---------------------------------------------------------------- export
 
@@ -67,6 +74,12 @@ class CookieService:
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         _sqlite_backup(cookies_db, destination)
+        if self._log is not None:
+            self._log.info(
+                "cookies",
+                f"Profile #{profile_id} cookies exported",
+                extra={"profile_id": profile_id, "path": str(destination)},
+            )
         return str(destination)
 
     # ---------------------------------------------------------------- import
@@ -91,6 +104,12 @@ class CookieService:
         target = _find_cookies_db(profile_dir) or profile_dir / "Default" / "Cookies"
         target.parent.mkdir(parents=True, exist_ok=True)
         _replace_cookie_db(source, target)
+        if self._log is not None:
+            self._log.info(
+                "cookies",
+                f"Profile #{profile_id} cookies imported",
+                extra={"profile_id": profile_id, "source": str(source)},
+            )
         return str(target)
 
     # --------------------------------------------------------------- helpers

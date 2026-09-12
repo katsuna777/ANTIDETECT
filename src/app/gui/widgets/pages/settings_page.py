@@ -59,11 +59,7 @@ class SettingsPage(PlaceholderPage):
         self._confirm.setChecked(
             self._prefs.get_bool(Preferences.KEY_CONFIRM_DESTRUCTIVE, default=True)
         )
-        self._confirm.toggled.connect(
-            lambda checked: self._prefs.set_bool(
-                Preferences.KEY_CONFIRM_DESTRUCTIVE, checked
-            )
-        )
+        self._confirm.toggled.connect(self._apply_confirm_choice)
         safety_layout.addWidget(self._confirm)
         safety_hint = QLabel("Covers profile delete, configuration delete and proxy pool refresh.")
         safety_hint.setObjectName("HintLabel")
@@ -128,11 +124,13 @@ class SettingsPage(PlaceholderPage):
     def _apply_theme_choice(self) -> None:
         theme = self._theme_combo.currentData() or "light"
         self._prefs.set_theme(str(theme))
+        self._container.logs.info("gui", f"Theme switched to {theme}")
         self._apply_current_look()
 
     def _apply_accent_choice(self) -> None:
         accent = self._accent_combo.currentData() or "mono"
         self._prefs.set_accent(str(accent))
+        self._container.logs.info("gui", f"Accent switched to {accent}")
         self._apply_current_look()
 
     def _apply_current_look(self) -> None:
@@ -143,6 +141,13 @@ class SettingsPage(PlaceholderPage):
             theme = self._prefs.get_theme()
             accent = self._prefs.get_accent(current_accent(app))
             apply_theme(app, theme, accent)
+
+    def _apply_confirm_choice(self, checked: bool) -> None:
+        self._prefs.set_bool(Preferences.KEY_CONFIRM_DESTRUCTIVE, checked)
+        self._container.logs.info(
+            "gui",
+            f"Destructive-action confirmations {'enabled' if checked else 'disabled'}",
+        )
 
     def _toggle_theme_button(self) -> None:
         window = self.window()

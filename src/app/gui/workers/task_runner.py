@@ -32,11 +32,15 @@ class TaskRunner(QObject):
     Callbacks (``on_result``, ``on_error``, ``on_progress``, ``on_finished``)
     are invoked through queued slot calls on whichever thread created the
     runner (the GUI thread), so widgets may be updated freely inside them.
+
+    ``error_sink`` (a LogSink) receives one ERROR entry per failed task
+    before ``on_error`` runs, so every worker failure lands in the session
+    log even when the page only shows a dialog.
     """
 
     _INTERNAL_WAIT_MS = 3000
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, parent: QObject | None = None, error_sink=None) -> None:
         super().__init__(parent)
         self._pool = QThreadPool(self)
         # Allow several heavy operations (proxy refresh, profile start, cookie
@@ -47,6 +51,7 @@ class TaskRunner(QObject):
         )
         self._closed = False
         self._active = 0
+        self._error_sink = error_sink
         with _ACTIVE_LOCK:
             _ACTIVE_RUNNERS.add(self)
 
@@ -87,7 +92,7 @@ class TaskRunner(QObject):
         if on_result is not None:
             handle.result.connect(on_result)
         if on_error is not None:
-            handle.error.connect(on_error)
+            handle.error.connect(self._wrap_error(on_error))
         if on_progress is not None:
             handle.progress.connect(on_progress)
         if on_finished is not None:
@@ -130,6 +135,20 @@ class TaskRunner(QObject):
             _ACTIVE_RUNNERS.discard(self)
 
     # ---------------------------------------------------------- internal
+
+    def _wrap_error(self, handler: ErrorHandler) -> ErrorHandler:
+        """Log the failure to the session log, then run the page handler."""
+
+        def wrapped(exc: object) -> None:
+            sink = self._error_sink
+            if sink is not None:
+                try:
+                    sink.error("gui", f"Task failed: {exc}")
+                except Exception:  # noqa: BLE001 - logging never breaks errors
+                    pass
+            handler(exc)
+
+        return wrapped
 
     def _on_finished(self) -> None:
         self._active = max(0, self._active - 1)

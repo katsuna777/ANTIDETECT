@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QVBoxLayout,
 )
 
 from app.gui import workers
@@ -62,7 +63,9 @@ class ProfilesPage(PlaceholderPage):
         self._stop.setToolTip("Stop the running Chromium process")
         self._restart = QPushButton("RESTART")
         self._restart.setToolTip("Stop and start again")
-        self.add_control_row(
+        # Wrapping row: on narrow windows the buttons flow underneath
+        # instead of sliding off-screen (horizontal scroll is disabled).
+        self.add_flow_row(
             self._new, self._duplicate, self._edit, self._delete,
             self._start, self._stop, self._restart,
         )
@@ -74,11 +77,17 @@ class ProfilesPage(PlaceholderPage):
         self._list.setToolTip("Double-click a row to edit it")
         self.add_widget(self._list, 1)
 
+        # Empty-state watermark living *inside* the list block: a centered,
+        # semi-transparent hint floating over the viewport. It shows only
+        # while the pool is empty and vanishes with the first profile.
+        # Transparent to the mouse so clicks still reach the list itself.
         self._empty = self.make_empty_state(
             "No profiles yet — press NEW to create the first one."
         )
-        self._empty.hide()
-        self.add_widget(self._empty)
+        self._empty.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        overlay = QVBoxLayout(self._list)
+        overlay.setContentsMargins(0, 0, 0, 0)
+        overlay.addWidget(self._empty, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.add_widget(
             self.make_hint("Tip: double-click a row to edit · Enter edits · Del deletes.")

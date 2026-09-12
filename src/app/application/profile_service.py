@@ -212,7 +212,19 @@ class ProfileService:
         self._profiles.update(created.id, profile_path=profile_path)
         if auto_config and proxy_id is not None:
             self._maybe_auto_config(created.id)
-        return self._profiles.get(created.id)  # type: ignore[return-value]
+        finished = self._profiles.get(created.id)
+        if finished is not None:
+            self._log_info(
+                "profiles",
+                f"Profile #{finished.id:03d} '{finished.name}' created",
+                extra={
+                    "profile_id": finished.id,
+                    "name": finished.name,
+                    "configuration_id": finished.configuration_id,
+                    "proxy_id": finished.proxy_id,
+                },
+            )
+        return finished  # type: ignore[return-value]
 
     def update_profile(
         self,
@@ -248,6 +260,16 @@ class ProfileService:
         updated = self._profiles.get(profile_id)
         if updated is None:
             raise ProfileNotFoundError(profile_id)
+        self._log_info(
+            "profiles",
+            f"Profile #{profile_id:03d} updated",
+            extra={
+                "profile_id": profile_id,
+                "name": updated.name,
+                "configuration_id": updated.configuration_id,
+                "proxy_id": updated.proxy_id,
+            },
+        )
         if auto_config and configuration_id is None and updated.proxy_id is not None:
             # A proxy (re)assignment without an explicit configuration means
             # "match the fingerprint to the proxy" — same as assign_proxy.
@@ -265,6 +287,11 @@ class ProfileService:
         updated = self._profiles.set_configuration(profile_id, configuration_id)
         if updated is None:
             raise ProfileNotFoundError(profile_id)
+        self._log_info(
+            "profiles",
+            f"Profile #{profile_id:03d} configuration set to #{configuration_id}",
+            extra={"profile_id": profile_id, "configuration_id": configuration_id},
+        )
         return updated
 
     def remove_configuration(self, profile_id: int) -> Profile:
@@ -273,6 +300,11 @@ class ProfileService:
         updated = self._profiles.set_configuration(profile_id, None)
         if updated is None:
             raise ProfileNotFoundError(profile_id)
+        self._log_info(
+            "profiles",
+            f"Profile #{profile_id:03d} configuration detached",
+            extra={"profile_id": profile_id},
+        )
         return updated
 
     def assign_proxy(
@@ -292,6 +324,18 @@ class ProfileService:
         updated = self._profiles.set_proxy(profile_id, proxy_id)
         if updated is None:
             raise ProfileNotFoundError(profile_id)
+        if proxy_id is None:
+            self._log_info(
+                "profiles",
+                f"Profile #{profile_id:03d} proxy detached",
+                extra={"profile_id": profile_id},
+            )
+        else:
+            self._log_info(
+                "profiles",
+                f"Profile #{profile_id:03d} proxy set to #{proxy_id}",
+                extra={"profile_id": profile_id, "proxy_id": proxy_id},
+            )
         if auto_config and proxy_id is not None:
             self._maybe_auto_config(profile_id)
             refreshed = self._profiles.get(profile_id)
@@ -401,6 +445,11 @@ class ProfileService:
         if profile_path.exists():
             shutil.rmtree(profile_path, ignore_errors=True)
         self._profiles.delete(profile_id)
+        self._log_info(
+            "profiles",
+            f"Profile #{profile_id:03d} '{profile.name}' deleted",
+            extra={"profile_id": profile_id, "name": profile.name},
+        )
 
     def duplicate_profile(self, profile_id: int, name: str | None = None) -> Profile:
         source = self.get_profile(profile_id)
@@ -434,7 +483,19 @@ class ProfileService:
         # configuration and proxy references are copied (= the documented
         # duplicate semantics) and remain changeable afterwards.
 
-        return self._profiles.get(created.id)  # type: ignore[return-value]
+        finished = self._profiles.get(created.id)
+        if finished is not None:
+            self._log_info(
+                "profiles",
+                f"Profile #{source.id:03d} duplicated to "
+                f"#{finished.id:03d} '{finished.name}'",
+                extra={
+                    "profile_id": finished.id,
+                    "name": finished.name,
+                    "source_id": source.id,
+                },
+            )
+        return finished  # type: ignore[return-value]
 
     # ---------------------------------------------------------------- runtime
 

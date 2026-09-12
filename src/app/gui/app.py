@@ -87,6 +87,9 @@ def run_app(
     # TaskRunner и сохраняет геометрию), и только потом закрывать
     # Container (SQLite). Сплэш — child окна, умрёт вместе с ним.
     app.aboutToQuit.connect(window.close)
+    app.aboutToQuit.connect(
+        lambda: container.logs.info("app", "Application exiting")
+    )
     app.aboutToQuit.connect(container.close)
     return app.exec()
 

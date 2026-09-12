@@ -266,9 +266,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         handler(service, args)
     except AntiDetectError as exc:
+        container.logs.error("cli", f"Command failed: {exc}")
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except ValueError as exc:
+        container.logs.error("cli", f"Command failed: {exc}")
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:

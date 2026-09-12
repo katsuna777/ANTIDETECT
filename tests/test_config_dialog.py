@@ -60,30 +60,45 @@ def _select_timezone(dialog, zone):
     dialog._timezone.setCurrentIndex(index)
 
 
-def test_timezone_pick_syncs_locale_and_language():
+def test_timezone_pick_syncs_locale_but_not_language():
     dialog = ConfigDialog()
     _select_timezone(dialog, "Asia/Tokyo")
     values = dialog.values()
     assert values["timezone"] == "Asia/Tokyo"
     assert values["locale"] == "ja-JP"
-    assert values["language"] == "ja"
+    assert values["language"] is None
 
 
-def test_locale_typing_syncs_timezone_and_language():
+def test_locale_typing_syncs_timezone_but_not_language():
     dialog = ConfigDialog()
     dialog._locale.setText("de-DE")
     values = dialog.values()
     assert values["timezone"] == "Europe/Berlin"
-    assert values["language"] == "de"
     assert values["locale"] == "de-DE"
+    assert values["language"] is None
 
 
-def test_language_typing_syncs_timezone_and_locale():
+def test_language_choice_never_moves_timezone_or_locale():
     dialog = ConfigDialog()
-    dialog._language.setText("fr")
+    _select_timezone(dialog, "Asia/Tokyo")
+    dialog._language.setCurrentText("de")
     values = dialog.values()
-    assert values["timezone"] == "Europe/Paris"
-    assert values["locale"] == "fr-FR"
+    assert values["language"] == "de"
+    assert values["timezone"] == "Asia/Tokyo"
+    assert values["locale"] == "ja-JP"
+
+
+def test_language_pool_and_custom_value():
+    from app.application.configuration_generator import SUPPORTED_LANGUAGES
+
+    dialog = ConfigDialog()
+    pooled = [
+        dialog._language.itemText(i)
+        for i in range(dialog._language.count())
+    ]
+    assert set(SUPPORTED_LANGUAGES) <= set(pooled)
+    dialog._language.setCurrentText("xx-custom")
+    assert dialog.values()["language"] == "xx-custom"
 
 
 def test_unknown_locale_leaves_fields_untouched():

@@ -104,11 +104,13 @@ def bootstrap(config: AppConfig | None = None) -> Container:
     configuration_service = ConfigurationService(
         configurations=configuration_repo,
         generator=ConfigurationGenerator(),
+        log_sink=logs,
     )
     cookie_service = CookieService(
         profiles=profile_repo,
         browsers=manager,
         export_dir=config.data_dir / "cookie-backups",
+        log_sink=logs,
     )
 
     proxy_check_repo = SqliteProxyCheckRepository(db)
