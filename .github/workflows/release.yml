@@ -65,7 +65,7 @@ jobs:
           mkdir -p release stage
           cp -R dist/Antidetect.app stage/
           ln -s /Applications stage/Applications || true
-          hdiutil create -volname Antidetect -srcfolder stage -ov -format UDZO release/Antidetect.dmg
+          hdiutil create -volname ANTIDETECT -srcfolder stage -ov -format UDZO release/Antidetect.dmg
       - name: Validate .dmg
         run: python3 scripts/validate_macos.py --dmg release/Antidetect.dmg
       - uses: actions/upload-artifact@v4

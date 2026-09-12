@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         self._runner = TaskRunner(self, error_sink=container.logs)
         self._prefs = Preferences(container.settings)
 
-        self.setWindowTitle("Antidetect")
+        self.setWindowTitle("ANTIDETECT")
         self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)

@@ -50,7 +50,7 @@ def show_error(
     """
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Warning)
-    box.setWindowTitle("Antidetect")
+    box.setWindowTitle("ANTIDETECT")
     box.setText(friendly_error_text(exc))
     box.setDetailedText(error_details(exc))
     callbacks: dict[int, Any] = {}

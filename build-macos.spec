@@ -101,7 +101,7 @@ app = BUNDLE(
     bundle_identifier="com.antidetect.browser",
     info_plist={
         "CFBundleShortVersionString": "0.1.0",
-        "CFBundleName": "Antidetect",
+        "CFBundleName": "ANTIDETECT",
         "NSHighResolutionCapable": True,
     },
 )

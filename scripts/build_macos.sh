@@ -32,7 +32,7 @@ fi
 
 "${PY}" "${ROOT}/scripts/validate_macos.py" --app "${ROOT}/dist/Antidetect.app"
 
-VOLNAME="Antidetect"
+VOLNAME="ANTIDETECT"
 DMG="${ROOT}/release/Antidetect.dmg"
 STAGE="$(mktemp -d)"
 cp -R "${ROOT}/dist/Antidetect.app" "${STAGE}/"
