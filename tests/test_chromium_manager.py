@@ -465,6 +465,11 @@ def test_user_data_dir_match_is_exact_not_substring(tmp_path: Path) -> None:
 def _cmdline(pid: int) -> str:
     if sys.platform == "win32":
         raise pytest.skip("ps inspection not covered on Windows in CI")
+    # `ps -o command=` truncates to display width on Linux (no tty),
+    # cutting off the flags under test — read the full /proc cmdline first.
+    proc = Path(f"/proc/{pid}/cmdline")
+    if proc.is_file():
+        return proc.read_bytes().replace(b"\x00", b" ").decode(errors="ignore")
     output = subprocess.run(
         ["ps", "-o", "command=", "-p", str(pid)],
         capture_output=True,

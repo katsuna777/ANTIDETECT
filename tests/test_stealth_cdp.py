@@ -313,6 +313,11 @@ def test_live_windows_spoof_on_all_tabs(tmp_path: Path):
 def _cmdline(pid: int) -> str:
     if sys.platform == "win32":
         pytest.skip("ps inspection not covered on Windows in CI")
+    # `ps -o command=` truncates to display width on Linux (no tty),
+    # cutting off the flags under test — read the full /proc cmdline first.
+    proc = Path(f"/proc/{pid}/cmdline")
+    if proc.is_file():
+        return proc.read_bytes().replace(b"\x00", b" ").decode(errors="ignore")
     output = subprocess.run(
         ["ps", "-o", "command=", "-p", str(pid)],
         capture_output=True,

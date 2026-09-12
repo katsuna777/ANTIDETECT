@@ -830,7 +830,8 @@ def user_data_dir_arg_contains(pid: int, profile_path: Path) -> bool:
 
     Implemented per-platform:
       * Windows: PowerShell CIM query, fallback to `tasklist` verbose.
-      * POSIX: `ps -o command=`, fallback to /proc/<pid>/cmdline on Linux.
+      * Linux: /proc/<pid>/cmdline first (full, untruncated), then `ps`.
+      * Other POSIX (macOS): `ps -o command=`.
     Matching is an exact --user-data-dir comparison, not a substring.
     """
     if _is_windows():
@@ -864,6 +865,14 @@ def user_data_dir_arg_contains(pid: int, profile_path: Path) -> bool:
                 return False
         return False
 
+    # NOTE: /proc goes first on Linux because `ps -o command=` truncates
+    # the command line to display width (no tty in CI/services), cutting
+    # off --user-data-dir and producing false "not running" verdicts.
+    # The old order (ps first, /proc only when ps output is empty) never
+    # reached the fallback: truncated output is still non-empty.
+    proc = _linux_proc_cmdline(pid)
+    if proc is not None and proc.strip():
+        return _cmdline_matches(proc, profile_path)
     try:
         output = subprocess.run(
             ["ps", "-o", "command=", "-p", str(pid)],
@@ -875,7 +884,6 @@ def user_data_dir_arg_contains(pid: int, profile_path: Path) -> bool:
         output = ""
     if output.strip():
         return _cmdline_matches(output, profile_path)
-    fallback = _linux_proc_cmdline(pid)
-    if fallback is None:
-        return False
-    return _cmdline_matches(fallback, profile_path)
+    if proc is not None:
+        return _cmdline_matches(proc, profile_path)
+    return False
