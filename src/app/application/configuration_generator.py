@@ -254,6 +254,23 @@ def country_defaults(country_code: str | None) -> tuple[str, str, str] | None:
     return COUNTRY_DEFAULTS.get(country_code.strip().upper())
 
 
+def country_for_language(language: str | None) -> str | None:
+    """First country whose default language matches, or None.
+
+    Best effort for the config dialog's reverse sync (language -> geo):
+    shared languages map to their first listed country (``en`` -> ``US``).
+    """
+    if not language:
+        return None
+    want = language.strip().lower().replace("_", "-").split("-", 1)[0]
+    if not want:
+        return None
+    for code, (default_language, _locale, _timezone) in COUNTRY_DEFAULTS.items():
+        if default_language.lower() == want:
+            return code
+    return None
+
+
 def build_user_agent(
     browser: str, platform: str, version: str, pattern: str | None = None
 ) -> str:

@@ -52,3 +52,45 @@ def test_edit_dialog_prefills_configuration(gui_container):
     assert values["timezone"] == "Europe/Berlin"
     assert values["screen_width"] == 1920
     assert values["screen_height"] == 1080
+
+
+def _select_timezone(dialog, zone):
+    index = dialog._timezone.findData(zone)
+    assert index >= 0, f"{zone} not in picker"
+    dialog._timezone.setCurrentIndex(index)
+
+
+def test_timezone_pick_syncs_locale_and_language():
+    dialog = ConfigDialog()
+    _select_timezone(dialog, "Asia/Tokyo")
+    values = dialog.values()
+    assert values["timezone"] == "Asia/Tokyo"
+    assert values["locale"] == "ja-JP"
+    assert values["language"] == "ja"
+
+
+def test_locale_typing_syncs_timezone_and_language():
+    dialog = ConfigDialog()
+    dialog._locale.setText("de-DE")
+    values = dialog.values()
+    assert values["timezone"] == "Europe/Berlin"
+    assert values["language"] == "de"
+    assert values["locale"] == "de-DE"
+
+
+def test_language_typing_syncs_timezone_and_locale():
+    dialog = ConfigDialog()
+    dialog._language.setText("fr")
+    values = dialog.values()
+    assert values["timezone"] == "Europe/Paris"
+    assert values["locale"] == "fr-FR"
+
+
+def test_unknown_locale_leaves_fields_untouched():
+    dialog = ConfigDialog()
+    _select_timezone(dialog, "Asia/Tokyo")
+    dialog._locale.setText("xx-YY")
+    values = dialog.values()
+    # No known country: previous geo stays, nothing crashes.
+    assert values["timezone"] == "Asia/Tokyo"
+    assert values["locale"] == "xx-YY"

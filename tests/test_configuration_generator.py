@@ -8,6 +8,7 @@ from app.application.configuration_generator import (
     PLATFORMS,
     ConfigurationGenerator,
     build_user_agent,
+    country_for_language,
     validate_draft,
 )
 
@@ -155,3 +156,12 @@ def test_validate_draft_rejects_mismatched_screen():
 def test_validate_draft_rejects_bad_values(params: dict):
     with pytest.raises(ValueError):
         validate_draft(params)
+
+
+def test_country_for_language_first_match_wins():
+    assert country_for_language("fr") == "FR"
+    assert country_for_language("en") == "US"
+    assert country_for_language("de-DE") == "DE"
+    assert country_for_language(None) is None
+    assert country_for_language("") is None
+    assert country_for_language("xx") is None

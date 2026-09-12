@@ -23,7 +23,15 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from app.application.profile_doctor import SUPPORTED_TIMEZONES
+from app.application.configuration_generator import (
+    country_defaults,
+    country_for_language,
+)
+from app.application.profile_doctor import (
+    SUPPORTED_TIMEZONES,
+    TIMEZONE_COUNTRY,
+    locale_country,
+)
 
 _PLATFORMS = ["windows", "macos", "linux"]
 
@@ -53,6 +61,7 @@ class ConfigDialog(QDialog):
         subtitle.setObjectName("HintLabel")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+        self._syncing = False
 
         # --- Group 1: identity -------------------------------------------------
         identity = QGroupBox("1 · Identity")
@@ -105,6 +114,9 @@ class ConfigDialog(QDialog):
         if not creating:
             self._select(self._timezone, config.timezone)
         fingerprint_form.addRow("Timezone", self._timezone)
+        geo_hint = QLabel("Timezone ↔ locale/language sync automatically.")
+        geo_hint.setObjectName("HintLabel")
+        fingerprint_form.addRow("", geo_hint)
         layout.addWidget(fingerprint)
 
         # --- Group 3: screen ----------------------------------------------------
@@ -141,6 +153,9 @@ class ConfigDialog(QDialog):
         layout.addWidget(self._buttons)
 
         self._name.textChanged.connect(self._validate)
+        self._timezone.currentIndexChanged.connect(self._sync_from_timezone)
+        self._locale.textChanged.connect(self._sync_from_locale)
+        self._language.textChanged.connect(self._sync_from_language)
         self._validate()
 
     # ------------------------------------------------------------ values
@@ -176,6 +191,47 @@ class ConfigDialog(QDialog):
         else:
             self._name_error.setText("Name cannot be empty — give the configuration a name.")
             self._name_error.show()
+
+    # ------------------------------------------------------------ geo sync
+
+    def _sync_from_timezone(self) -> None:
+        """Timezone picked -> align locale + language to its country."""
+        if self._syncing:
+            return
+        timezone = self._timezone.currentData()
+        if not timezone:
+            return
+        country = TIMEZONE_COUNTRY.get(timezone)
+        defaults = country_defaults(country) if country else None
+        if defaults is not None:
+            self._apply_geo(*defaults)
+
+    def _sync_from_locale(self) -> None:
+        """Locale typed -> align timezone + language to its country."""
+        if self._syncing:
+            return
+        country = locale_country(self._locale.text().strip())
+        defaults = country_defaults(country) if country else None
+        if defaults is not None:
+            self._apply_geo(*defaults)
+
+    def _sync_from_language(self) -> None:
+        """Language typed -> align timezone + locale (first matching country)."""
+        if self._syncing:
+            return
+        country = country_for_language(self._language.text())
+        defaults = country_defaults(country) if country else None
+        if defaults is not None:
+            self._apply_geo(*defaults)
+
+    def _apply_geo(self, language: str, locale: str, timezone: str) -> None:
+        self._syncing = True
+        try:
+            self._language.setText(language)
+            self._locale.setText(locale)
+            self._select(self._timezone, timezone)
+        finally:
+            self._syncing = False
 
     # ------------------------------------------------------------ helpers
 
