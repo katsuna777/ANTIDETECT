@@ -479,3 +479,11 @@ def _cmdline(pid: int) -> str:
         timeout=5,
     ).stdout
     return output
+
+def test_extra_switches_come_from_the_environment_and_default_to_none(monkeypatch):
+    from antidetect.infrastructure.chromium.chromium_manager import _extra_arguments
+
+    monkeypatch.delenv("ANTIDETECT_CHROMIUM_ARGS", raising=False)
+    assert _extra_arguments() == []
+    monkeypatch.setenv("ANTIDETECT_CHROMIUM_ARGS", "  --use-angle=swiftshader   --enable-unsafe-swiftshader ")
+    assert _extra_arguments() == ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]

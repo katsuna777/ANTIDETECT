@@ -299,7 +299,9 @@ def test_the_manager_creates_renames_recolours_and_deletes(window, gui_container
     old = window.catalog.tag("old")
     edit = QLineEdit()
     dialog.rename(old, "older", edit)
-    assert spin_wait(lambda: window.catalog.tag("older"))
+    # A rename first renames the tag and then the profiles that carry it, one by one: a snapshot taken in
+    # between shows "older" with no profiles yet, and removing that stale entry would not ask anything.
+    assert spin_wait(lambda: window.catalog.tag("older") and window.catalog.tag("older").count == 1)
     assert gui_container.profiles.list_profiles()[0].tags == ["older"]
     monkeypatch.setattr(ConfirmDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
     dialog.remove(window.catalog.tag("older"))                     # cancelled: kept

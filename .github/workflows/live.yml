@@ -5,6 +5,11 @@ name: Live browser checks
 # every push: run it by hand or let the weekly schedule do it.
 on:
   workflow_dispatch:
+    inputs:
+      only-windows:
+        description: Run on Windows only (a macOS runner minute is billed 10x on a private repo)
+        type: boolean
+        default: false
   schedule:
     - cron: "0 5 * * 1"
 
@@ -13,16 +18,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: ${{ fromJSON(inputs.only-windows && '["windows-latest"]' || '["windows-latest","macos-latest","ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
       QT_QPA_PLATFORM: offscreen
       ANTIDETECT_LIVE_BROWSER: "1"
       ANTIDETECT_NO_SANDBOX: "1"          # hosted Linux runners restrict the user namespaces Chrome's sandbox needs
+      # Hosted Windows and Linux runners have no GPU, and recent Chrome gives no WebGL at all without this
+      # (macOS runners have one). The checks compare the GPU the page claims with what every realm reports.
+      ANTIDETECT_CHROMIUM_ARGS: "--use-angle=swiftshader --enable-unsafe-swiftshader"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install Qt6 system libraries and a virtual display (Linux)
@@ -57,5 +65,7 @@ jobs:
         shell: pwsh
         run: |
           $env:ANTIDETECT_CHROMIUM_PATH = (antidetect browser path)
-          pytest -q tests/infrastructure/stealth/test_stealth_cdp.py -k live
-          pytest -q tests/api/test_live_api.py
+          # One pytest run: PowerShell takes the exit code of the LAST native command only, so two runs in
+          # a row let a failure of the first one pass unnoticed.
+          pytest -q tests/infrastructure/stealth/test_stealth_cdp.py tests/api/test_live_api.py -k live
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -32,6 +32,7 @@ from typing import Any, BinaryIO
 from urllib.parse import urlparse
 
 from antidetect.domain.errors import BrowserDownloadError, DownloadCancelled
+from antidetect.infrastructure.chromium.file_version import windows_file_version
 
 INDEX_URL = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
 #: The only place a browser is downloaded from: (host, path prefix).
@@ -314,7 +315,11 @@ class ManagedBrowsers:
 # ------------------------------------------------------------------------------ helpers
 
 def probe_version(executable: Path) -> str | None:
-    """What ``executable --version`` says, or ``None`` when it does not run."""
+    """What ``executable --version`` says (on Windows, which prints nothing there: the version stamped into
+    the exe), or ``None`` when it does not run."""
+    stamped = windows_file_version(executable)
+    if stamped:
+        return stamped
     try:
         completed = subprocess.run([str(executable), "--version"], capture_output=True, text=True, timeout=30)
     except Exception:

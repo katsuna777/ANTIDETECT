@@ -386,7 +386,7 @@ def _manager(fake_chromium: Path, tmp_path: Path, factory, **kwargs) -> Chromium
 
 
 def _cmdline(pid: int) -> str:
-    out = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
+    out = subprocess.run(["ps", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
     return out.stdout
 
 
@@ -711,13 +711,21 @@ def _evaluate_on_new_tab(profile_dir: Path, url: str, expression: str, wait: flo
         target = browser.call("Target.createTarget", {"url": url})["targetId"]
         session = browser.call("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
         time.sleep(wait)
-        reply = browser.call(
-            "Runtime.evaluate",
-            {"expression": expression, "awaitPromise": True, "returnByValue": True, "userGesture": True},
-            session,
-            timeout=90,
-        )
-        return reply["result"]["value"]
+        for attempt in range(4):
+            try:
+                reply = browser.call(
+                    "Runtime.evaluate",
+                    {"expression": expression, "awaitPromise": True, "returnByValue": True, "userGesture": True},
+                    session,
+                    timeout=90,
+                )
+                return reply["result"]["value"]
+            except StealthError as exc:
+                # The page was still loading (a slow hosted runner): its execution context went away under
+                # the call. Ask again once it has settled; any other failure is real.
+                if "context was destroyed" not in str(exc) or attempt == 3:
+                    raise
+                time.sleep(1.5)
     finally:
         browser.close()
 
@@ -804,7 +812,7 @@ def test_live_first_tab_navigated_in_place_is_still_spoofed(tmp_path: Path, monk
             assert tab["url"].startswith("chrome://newtab")
             session = conn.call("Target.attachToTarget", {"targetId": tab["targetId"], "flatten": True})["sessionId"]
             conn.call("Page.enable", {}, session)
-            conn.call("Page.navigate", {"url": url}, session)
+            conn.call("Page.navigate", {"url": url}, session, timeout=30.0)    # a hosted Windows runner is slow here
             time.sleep(3.0)
             seen = json.loads(conn.call(
                 "Runtime.evaluate",
@@ -949,7 +957,7 @@ def test_live_the_colour_scheme_is_the_profiles_own_not_the_systems(tmp_path: Pa
             tab = next(i for i in conn.call("Target.getTargets")["targetInfos"] if i["type"] == "page")
             session = conn.call("Target.attachToTarget", {"targetId": tab["targetId"], "flatten": True})["sessionId"]
             conn.call("Page.enable", {}, session)
-            conn.call("Page.navigate", {"url": url}, session)
+            conn.call("Page.navigate", {"url": url}, session, timeout=30.0)
             time.sleep(3.0)
             first = json.loads(conn.call("Runtime.evaluate", {"expression": ask, "awaitPromise": True, "returnByValue": True},
                                          session, timeout=30)["result"]["value"])

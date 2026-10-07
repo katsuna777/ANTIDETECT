@@ -34,6 +34,7 @@ def test_home_fallback_when_installed_outside_repo(monkeypatch, tmp_path):
     fake_pkg.mkdir(parents=True)
     monkeypatch.setattr(settings_module, "__file__", str(fake_pkg / "config.py"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))      # what Path.home() reads on Windows
     # Hide platformdirs so the test asserts the pure fallback; the
     # platformdirs branch is covered by test_platformdirs_default below.
     import sys
@@ -56,6 +57,7 @@ def test_legacy_data_dir_is_reused(monkeypatch, tmp_path):
     legacy.mkdir(parents=True)
     (legacy / "antidetect.db").touch()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))                   # what Path.home() reads on Windows
     config = AppConfig.from_env()
     assert config.data_dir == legacy
 
@@ -70,6 +72,7 @@ def test_platformdirs_default(monkeypatch, tmp_path):
     fake_pkg.mkdir(parents=True)
     monkeypatch.setattr(settings_module, "__file__", str(fake_pkg / "config.py"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))      # what Path.home() reads on Windows
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     config = AppConfig.from_env()
     assert config.data_dir == Path(platformdirs.user_data_dir("Antidetect", "Antidetect"))

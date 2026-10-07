@@ -34,21 +34,3 @@ jobs:
         run: uv sync --frozen --extra dev --python 3.12
       - name: Run tests
         run: uv run --no-sync pytest -q
-
-  # Windows is what most buyers use and it is not what the code is written on. Informational: a red
-  # mark here does not stop a build or a release, but read it before you ship.
-  tests-windows:
-    runs-on: windows-latest
-    timeout-minutes: 40
-    continue-on-error: true
-    env:
-      QT_QPA_PLATFORM: offscreen
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.2.0
-        with:
-          enable-cache: true
-      - name: Install the exact locked dependencies (uv.lock) with Python 3.12
-        run: uv sync --frozen --extra dev --python 3.12
-      - name: Run tests
-        run: uv run --no-sync pytest -q

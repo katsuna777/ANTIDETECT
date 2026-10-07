@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
         self._catalog = Catalog(container, self._runner, self)
         self._closing = False
         self._browser_info: tuple = (None, None)
+        self._browser_request = 0           # answers to older questions about the browser must not overwrite newer ones
         self._api: "ApiManager | None" = None
         self._api_bridge = _ApiBridge(self)
         self._api_refresh = QTimer(self)               # many calls in a row refresh the tables once
@@ -608,10 +609,16 @@ class MainWindow(QMainWindow):
 
     # ----------------------------------------------------------------- browser
     def refresh_browser(self) -> None:
-        """Re-read which Chrome will run profiles and tell everyone who shows it."""
+        """Re-read which Chrome will run profiles and tell everyone who shows it.
+
+        Asking takes a while (the browser is run with ``--version``), so two questions can be in flight;
+        only the answer to the latest one counts, otherwise a slow older answer would undo a newer one.
+        """
+        self._browser_request += 1
+        request = self._browser_request
         self._runner.submit(
             workers.tasks.browser_info(self._container),
-            on_result=self._apply_browser,
+            on_result=lambda info, r=request: self._apply_browser(info) if r == self._browser_request else None,
             on_error=lambda _exc: None,
         )
 

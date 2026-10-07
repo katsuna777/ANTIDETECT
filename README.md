@@ -176,6 +176,7 @@ antidetect api docs --lang ru  # инструкция по API (Markdown)
 | `ANTIDETECT_STEALTH_TRACE` | Путь к файлу трассировки целей/патчей |
 | `ANTIDETECT_MASK_FONTS` | `1` — экспериментальная маскировка шрифтов для чужой ОС (по умолчанию выключена) |
 | `ANTIDETECT_NO_SANDBOX` | `1` — запуск без sandbox (Linux root/CI) |
+| `ANTIDETECT_CHROMIUM_ARGS` | дополнительные ключи Chrome через пробел, добавляются в конец (отладка; на машинах без видеокарты — `--use-angle=swiftshader --enable-unsafe-swiftshader`) |
 | `ANTIDETECT_NATIVE_TITLEBAR` | `1` — на macOS оставить обычную полосу заголовка |
 | `ANTIDETECT_PROXY_SOURCES` / `_WORKERS` / `_TIMEOUT` | Настройка списка бесплатных прокси |
 

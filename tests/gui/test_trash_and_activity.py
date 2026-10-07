@@ -257,8 +257,12 @@ def test_older_entries_load_when_scrolled_to_the_end(window, gui_container, monk
     page._load()
     assert spin_wait(lambda: len(page._model.entries()) == 20 and page._more)
     bar = page._list.verticalScrollBar()
-    bar.setValue(bar.maximum())
-    assert spin_wait(lambda: len(page._model.entries()) == 40)
+    first_end = bar.maximum()
+    bar.setValue(first_end)
+    # Wait for the page to be fully settled before scrolling again: the loading flag drops a moment after
+    # the entries arrive and the bar grows only once the new rows are laid out; a scroll before that is
+    # ignored (and setting the same value again would send no signal), which only a slow machine shows.
+    assert spin_wait(lambda: len(page._model.entries()) == 40 and not page._loading and bar.maximum() > first_end)
     bar.setValue(bar.maximum())
     assert spin_wait(lambda: len(page._model.entries()) == 45 and not page._more)
 

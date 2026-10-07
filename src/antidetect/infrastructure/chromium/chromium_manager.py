@@ -13,6 +13,7 @@ from antidetect.application.fingerprint import privacy
 from antidetect.domain.errors import ChromiumError
 from antidetect.domain.models.browser_configuration import BrowserConfiguration
 from antidetect.domain.models.proxy import Proxy
+from antidetect.infrastructure.chromium.file_version import windows_file_version
 from antidetect.infrastructure.chromium.paths import discover_chromium
 from antidetect.infrastructure.chromium import preferences
 from antidetect.infrastructure.chromium.proxy_shim import LocalProxyShim
@@ -83,6 +84,15 @@ def _needs_no_sandbox() -> bool:
     return sys.platform.startswith("linux") and (_running_as_root() or _running_in_docker())
 
 
+def _extra_arguments() -> list[str]:
+    """Extra Chrome switches from ``ANTIDETECT_CHROMIUM_ARGS`` (separated by spaces), appended last.
+
+    For debugging and for machines without a GPU, where WebGL needs ``--enable-unsafe-swiftshader``
+    (the live-browser CI runs that way). Unset by default: a normal profile launches with no extras.
+    """
+    return os.environ.get("ANTIDETECT_CHROMIUM_ARGS", "").split()
+
+
 def _popen_kwargs() -> dict:
     """Platform-specific Popen options (no console window on Windows)."""
     if _is_windows():
@@ -118,7 +128,8 @@ _BINARY_VERSION_CACHE: dict[str, str | None] = {}
 
 
 def chromium_binary_version(binary: Path) -> str | None:
-    """Best-effort `binary --version` probe (never raises, cached, 5s timeout).
+    """Best-effort version probe: `binary --version`, or the version stamped into the exe on Windows
+    (never raises, cached, 5s timeout).
 
     Returns the raw version string (e.g. "Google Chrome 152.0.7977.83") or
     None when the binary does not answer (broken installs, timeouts).
@@ -126,6 +137,11 @@ def chromium_binary_version(binary: Path) -> str | None:
     """
     key = str(binary)
     if key in _BINARY_VERSION_CACHE:
+        return _BINARY_VERSION_CACHE[key]
+    # Windows: `chrome.exe --version` prints nothing, so read the version from the file itself (no process).
+    stamped = windows_file_version(binary)
+    if stamped:
+        _BINARY_VERSION_CACHE[key] = f"Chrome {stamped}"
         return _BINARY_VERSION_CACHE[key]
     try:
         completed = subprocess.run(
@@ -246,6 +262,7 @@ class ChromiumManager:
             args.extend(("--no-sandbox", "--disable-dev-shm-usage"))
         args.extend(_configuration_flags(configuration, spec))
         args.extend(_scrollbar_arguments(spec))
+        args.extend(_extra_arguments())
         from antidetect.infrastructure.stealth.cdp import clear_stale_port_file
 
         clear_stale_port_file(profile_path)

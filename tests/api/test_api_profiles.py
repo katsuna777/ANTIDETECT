@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import threading
 from pathlib import Path
 
@@ -233,7 +235,16 @@ def test_the_log_records_what_scripts_did(api):
     api.client.post(f"/v1/profiles/{profile['id']}/start")
     api.client.get("/v1/profiles")                                   # reads stay out of the log
     api.client.post("/v1/profiles/999/start")
-    lines = [e.message for e in api.container.logs.list_logs() if e.source == "api"]
+
+    def api_lines() -> list[str]:
+        return [e.message for e in api.container.logs.list_logs() if e.source == "api"]
+
+    # The server writes its log line right after it has sent the reply, so the last one can still be a
+    # moment away when the client already has the answer (seen on a slower machine).
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and not any("/v1/profiles/999/start" in line for line in api_lines()):
+        time.sleep(0.02)
+    lines = api_lines()
     assert any("POST /v1/profiles → 201" in line for line in lines)
     assert any(f"POST /v1/profiles/{profile['id']}/start → 200" in line for line in lines)
     assert any("/v1/profiles/999/start → 404" in line and "profile_not_found" in line for line in lines)
