@@ -1,0 +1,87 @@
+name: Build apps
+
+# Reusable: builds the Windows .exe and the macOS .dmg (Apple Silicon, optionally Intel) with the one
+# script that also builds locally (packaging/build.py), starts each finished app in --selftest mode
+# and uploads <file> + <file>.sha256 as the artifact "Antidetect-<target>".
+# Called by build.yml (every push to main) and release.yml (tags).
+on:
+  workflow_call:
+    inputs:
+      intel:
+        description: Also build the Intel Mac app (a macOS runner minute is billed 10x on a private repo)
+        type: boolean
+        default: true
+      retention-days:
+        description: How long the artifacts stay on the Actions page (free private repos have 500 MB in total)
+        type: number
+        default: 7
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        run: |
+          targets='{"target":"windows-x64","os":"windows-latest"},{"target":"macos-arm64","os":"macos-15"}'
+          if [ "${{ inputs.intel }}" = "true" ]; then
+            targets="$targets"',{"target":"macos-x64","os":"macos-15-intel"}'
+          fi
+          echo "matrix={\"include\":[$targets]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      # Only used on macOS, and only when you add them in Settings -> Secrets (see packaging/README.md);
+      # empty = an unsigned build, which still works.
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install the exact locked dependencies (uv.lock) with Python 3.12
+        run: uv sync --frozen --extra build --python 3.12
+
+      - name: Import the Developer ID certificate (macOS, only when the secrets are set)
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE_P12 != ''
+        env:
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+
+      - name: Build, check and pack
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: uv run --no-sync python packaging/build.py
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Antidetect-${{ matrix.target }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

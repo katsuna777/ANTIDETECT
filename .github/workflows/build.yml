@@ -1,78 +1,30 @@
 name: Build
 
+# A build of every push to main, to download from the run's Artifacts. A real release is release.yml.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      intel:
+        description: Also build the Intel Mac app
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   tests:
     uses: ./.github/workflows/ci.yml
 
-  build-windows:
+  build:
     needs: tests
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-build.txt
-      - name: Check build environment
-        run: python scripts/check_build_env.py
-      - name: Build standalone exe
-        run: |
-          python -m PyInstaller --noconfirm --clean --distpath dist --workpath build build-windows.spec
-          New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item dist\Antidetect.exe release\Antidetect.exe -Force
-      - name: Scan PyInstaller warnings
-        run: python scripts/check_warn.py --warn build/build-windows/warn-build-windows.txt
-      - name: Validate artifact
-        run: python scripts/validate_windows.py --exe release/Antidetect.exe
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Antidetect.exe
-          path: release/Antidetect.exe
-          if-no-files-found: error
-
-  build-macos:
-    needs: tests
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          pip install -r requirements-build.txt
-      - name: Check build environment
-        run: python3 scripts/check_build_env.py
-      - name: Report architectures
-        run: |
-          python3 -c "import platform; print(platform.machine())"
-          lipo -archs $(python3 -c "import sys; print(sys.executable)") || true
-      - name: Build .app
-        run: |
-          python3 -m PyInstaller --noconfirm --clean --distpath dist --workpath build build-macos.spec
-      - name: Scan PyInstaller warnings
-        run: python3 scripts/check_warn.py --warn build/build-macos/warn-build-macos.txt
-      - name: Validate .app
-        run: python3 scripts/validate_macos.py --app dist/Antidetect.app
-      - name: Pack .dmg
-        run: |
-          mkdir -p release stage
-          cp -R dist/Antidetect.app stage/
-          ln -s /Applications stage/Applications || true
-          hdiutil create -volname ANTIDETECT -srcfolder stage -ov -format UDZO release/Antidetect.dmg
-      - name: Validate .dmg
-        run: python3 scripts/validate_macos.py --dmg release/Antidetect.dmg
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Antidetect.dmg
-          path: release/Antidetect.dmg
-          if-no-files-found: error
+    uses: ./.github/workflows/_build.yml
+    secrets: inherit
+    with:
+      intel: ${{ inputs.intel == true }}

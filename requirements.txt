@@ -1,4 +1,0 @@
-websocket-client>=1.8
-platformdirs>=4
-PySide6>=6.6
-certifi>=2024.0

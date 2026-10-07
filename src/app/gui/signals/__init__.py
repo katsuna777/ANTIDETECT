@@ -1,1 +1,0 @@
-"""Qt signal objects bridging worker threads and the GUI thread."""
