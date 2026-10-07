@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
 
 concurrency:
   group: windows-tests-${{ github.ref }}
@@ -18,7 +19,7 @@ permissions:
 jobs:
   tests-windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
