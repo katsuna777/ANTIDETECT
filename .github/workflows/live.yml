@@ -60,5 +60,7 @@ jobs:
         shell: pwsh
         run: |
           $env:ANTIDETECT_CHROMIUM_PATH = (antidetect browser path)
-          pytest -q tests/infrastructure/stealth/test_stealth_cdp.py -k live
-          pytest -q tests/api/test_live_api.py
+          # One pytest run: PowerShell takes the exit code of the LAST native command only, so two runs in
+          # a row let a failure of the first one pass unnoticed.
+          pytest -q tests/infrastructure/stealth/test_stealth_cdp.py tests/api/test_live_api.py -k live
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

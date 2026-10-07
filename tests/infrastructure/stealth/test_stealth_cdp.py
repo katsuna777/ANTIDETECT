@@ -804,7 +804,7 @@ def test_live_first_tab_navigated_in_place_is_still_spoofed(tmp_path: Path, monk
             assert tab["url"].startswith("chrome://newtab")
             session = conn.call("Target.attachToTarget", {"targetId": tab["targetId"], "flatten": True})["sessionId"]
             conn.call("Page.enable", {}, session)
-            conn.call("Page.navigate", {"url": url}, session)
+            conn.call("Page.navigate", {"url": url}, session, timeout=30.0)    # a hosted Windows runner is slow here
             time.sleep(3.0)
             seen = json.loads(conn.call(
                 "Runtime.evaluate",
