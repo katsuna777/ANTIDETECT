@@ -957,7 +957,7 @@ def test_live_the_colour_scheme_is_the_profiles_own_not_the_systems(tmp_path: Pa
             tab = next(i for i in conn.call("Target.getTargets")["targetInfos"] if i["type"] == "page")
             session = conn.call("Target.attachToTarget", {"targetId": tab["targetId"], "flatten": True})["sessionId"]
             conn.call("Page.enable", {}, session)
-            conn.call("Page.navigate", {"url": url}, session)
+            conn.call("Page.navigate", {"url": url}, session, timeout=30.0)
             time.sleep(3.0)
             first = json.loads(conn.call("Runtime.evaluate", {"expression": ask, "awaitPromise": True, "returnByValue": True},
                                          session, timeout=30)["result"]["value"])

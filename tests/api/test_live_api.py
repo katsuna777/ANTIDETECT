@@ -66,7 +66,7 @@ def live(tmp_path: Path, monkeypatch):
 def _evaluate(conn: _CdpConnection, target_id: str, url: str) -> dict:
     session = conn.call("Target.attachToTarget", {"targetId": target_id, "flatten": True})["sessionId"]
     conn.call("Page.enable", {}, session)
-    conn.call("Page.navigate", {"url": url}, session)
+    conn.call("Page.navigate", {"url": url}, session, timeout=30.0)    # a hosted Windows runner can take over 8 s here
     time.sleep(2.0)
     reply = conn.call("Runtime.evaluate", {"expression": _PROBE, "returnByValue": True}, session)
     return json.loads(reply["result"]["value"])
