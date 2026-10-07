@@ -330,7 +330,7 @@ def test_polling_is_idle_while_nothing_runs_and_notices_a_crash(window, gui_cont
     import os, signal
 
     pid = gui_container.profiles.list_profiles()[0].pid
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))      # Windows has no SIGKILL; SIGTERM there is TerminateProcess
     assert spin_wait(lambda: (page._tick(), not page._model.rows()[0].running)[1], timeout_ms=8000)
 
 
@@ -506,3 +506,35 @@ def test_the_menu_marks_the_dangerous_item_and_the_main_one(window, gui_containe
     assert menu.defaultAction() is not None and menu.defaultAction().text() == "Move to trash"
     texts = [a.text() for a in menu.actions() if a.text()]
     assert texts[-1] == "Move to trash"
+
+
+def test_a_slow_older_browser_answer_does_not_undo_a_newer_one(window, gui_container, monkeypatch):
+    """Asking runs the browser with --version, so a start-up question can answer after a later one."""
+    import threading
+    from pathlib import Path
+
+    page = window.page(SECTION_PROFILES)
+    window._runner._pool.waitForDone(5000)                 # the question the window asked on start-up is over
+    spin_wait(lambda: False, timeout_ms=100)                # ...and its answer delivered
+    release, started, lock = threading.Event(), threading.Event(), threading.Lock()
+    calls: list[int] = []
+
+    def answers():
+        with lock:
+            n = len(calls)
+            calls.append(n)
+        if n == 0:                                          # the older question: slow, and the browser is there
+            started.set()
+            release.wait(10)
+            return Path("/opt/chrome"), "154.0.0.0"
+        return None, None                                   # the newer one: fast, and there is no browser
+
+    monkeypatch.setattr(gui_container, "browser_info", answers)
+    window.refresh_browser()
+    assert started.wait(5)
+    window.refresh_browser()
+    assert spin_wait(lambda: page._banner.isVisibleTo(page))
+    release.set()                                           # now the slow, outdated answer arrives
+    window._runner._pool.waitForDone(5000)
+    spin_wait(lambda: False, timeout_ms=200)
+    assert page._banner.isVisibleTo(page) and window._browser_info == (None, None)

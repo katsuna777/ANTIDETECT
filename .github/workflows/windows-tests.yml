@@ -32,4 +32,4 @@ jobs:
       # -v names the test that is running (so a hang is visible); faulthandler dumps every thread's stack
       # when one test runs longer than two minutes.
       - name: Run tests
-        run: uv run --no-sync pytest -v -rfE -o faulthandler_timeout=120
+        run: uv run --no-sync pytest -v -rfE --tb=short -o faulthandler_timeout=120

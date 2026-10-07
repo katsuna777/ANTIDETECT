@@ -47,7 +47,7 @@ def test_stop_on_dead_process_reconciles_to_stopped(service: ProfileService):
     import os
     import signal
 
-    os.kill(started.pid, signal.SIGKILL)
+    os.kill(started.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
     time.sleep(0.2)
 
     stopped = service.stop_profile(profile.id)
@@ -60,7 +60,7 @@ def test_reconcile_detects_crashed_process(service: ProfileService):
 
     profile = service.create_profile("Ghost")
     started = service.start_profile(profile.id)
-    os.kill(started.pid, signal.SIGKILL)
+    os.kill(started.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
     time.sleep(0.2)
 
     loaded = service.get_profile(profile.id)
