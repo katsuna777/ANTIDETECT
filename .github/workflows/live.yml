@@ -20,6 +20,9 @@ jobs:
       QT_QPA_PLATFORM: offscreen
       ANTIDETECT_LIVE_BROWSER: "1"
       ANTIDETECT_NO_SANDBOX: "1"          # hosted Linux runners restrict the user namespaces Chrome's sandbox needs
+      # Hosted Windows and Linux runners have no GPU, and recent Chrome gives no WebGL at all without this
+      # (macOS runners have one). The checks compare the GPU the page claims with what every realm reports.
+      ANTIDETECT_CHROMIUM_ARGS: "--use-angle=swiftshader --enable-unsafe-swiftshader"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

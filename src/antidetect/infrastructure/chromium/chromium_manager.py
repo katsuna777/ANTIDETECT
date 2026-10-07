@@ -84,6 +84,15 @@ def _needs_no_sandbox() -> bool:
     return sys.platform.startswith("linux") and (_running_as_root() or _running_in_docker())
 
 
+def _extra_arguments() -> list[str]:
+    """Extra Chrome switches from ``ANTIDETECT_CHROMIUM_ARGS`` (separated by spaces), appended last.
+
+    For debugging and for machines without a GPU, where WebGL needs ``--enable-unsafe-swiftshader``
+    (the live-browser CI runs that way). Unset by default: a normal profile launches with no extras.
+    """
+    return os.environ.get("ANTIDETECT_CHROMIUM_ARGS", "").split()
+
+
 def _popen_kwargs() -> dict:
     """Platform-specific Popen options (no console window on Windows)."""
     if _is_windows():
@@ -253,6 +262,7 @@ class ChromiumManager:
             args.extend(("--no-sandbox", "--disable-dev-shm-usage"))
         args.extend(_configuration_flags(configuration, spec))
         args.extend(_scrollbar_arguments(spec))
+        args.extend(_extra_arguments())
         from antidetect.infrastructure.stealth.cdp import clear_stale_port_file
 
         clear_stale_port_file(profile_path)

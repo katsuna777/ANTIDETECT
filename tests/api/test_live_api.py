@@ -100,7 +100,8 @@ def test_live_a_tool_connecting_through_the_api_sees_the_claimed_machine(live):
     cookie = {"name": "sid", "value": "abc", "domain": "127.0.0.1", "path": "/"}
     assert client.post(f"/v1/profiles/{profile['id']}/cookies", {"cookies": [cookie]})[1] == {"imported": 1}
     cookies = client.get(f"/v1/profiles/{profile['id']}/cookies")[1]
-    assert [(c["name"], c["value"]) for c in cookies["cookies"]] == [("sid", "abc")]
+    # Chrome itself talks to Google on a runner (its start page sets a NID cookie): only ours count.
+    assert [(c["name"], c["value"]) for c in cookies["cookies"] if c["domain"].lstrip(".") == "127.0.0.1"] == [("sid", "abc")]
     assert client.delete(f"/v1/profiles/{profile['id']}/cookies")[1] == {"cleared": True}
     assert client.get(f"/v1/profiles/{profile['id']}/cookies")[1]["count"] == 0
 
