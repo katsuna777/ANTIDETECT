@@ -1,683 +1,234 @@
-<div align="center">
-
-# 🛡️ ANTIDETECT
-
-### Независимые Chromium-профили · SQLite-хранилище · CLI + GUI поверх одной бизнес-логики
-
-[![CI](https://github.com/katsuna777/ANTIDETECT/actions/workflows/ci.yml/badge.svg)](https://github.com/katsuna777/ANTIDETECT/actions/workflows/ci.yml)
-[![Build](https://github.com/katsuna777/ANTIDETECT/actions/workflows/build.yml/badge.svg)](https://github.com/katsuna777/ANTIDETECT/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/katsuna777/ANTIDETECT?style=flat-square&color=blue)](https://github.com/katsuna777/ANTIDETECT/releases)
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/GUI-PySide6_Qt6-green?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython-6/)
-[![Tests](https://img.shields.io/badge/tests-580%2B_passing-success?style=flat-square&logo=pytest)](tests/)
-[![License](https://img.shields.io/badge/license-Proprietary-red?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows_%7C_macOS-lightgrey?style=flat-square&logo=windows&logoColor=white)](https://github.com/katsuna777/ANTIDETECT/releases)
-
-**Каждый профиль — отдельный браузер со своими cookies, proxy, языком, часовым поясом и fingerprint-настройками.<br/>Перезапустил — всё на месте: вкладки, сессии, localStorage.**
-
-[🚀 Быстрый старт](#-быстрый-старт-за-5-минут) · [📦 Скачать готовую сборку](#-готовые-сборки-без-python--рекомендуется) · [⌨️ CLI](#️-cli--терминал-без-мыши) · [🖥️ GUI](#️-gui-приложение) · [❓ FAQ](#-faq--решение-проблем)
-
-</div>
-
----
-
-## 📑 Содержание
-
-- [✨ Возможности](#-возможности)
-- [🧱 Как это устроено](#-как-это-устроено)
-- [📦 Готовые сборки — без Python ⭐](#-готовые-сборки-без-python--рекомендуется)
-- [🚀 Быстрый старт за 5 минут](#-быстрый-старт-за-5-минут)
-- [📋 Зависимости](#-зависимости)
-- [⌨️ CLI — терминал без мыши](#️-cli--терминал-без-мыши)
-- [🖥️ GUI-приложение](#️-gui-приложение)
-- [🌐 Прокси](#-прокси)
-- [🩺 Doctor — gate перед стартом и Google login](#-doctor--gate-перед-стартом-и-google-login)
-- [⚙️ Переменные окружения](#️-переменные-окружения)
-- [🗂️ Где лежат данные](#️-где-лежат-данные)
-- [🌍 Chromium — какой браузер нужен](#-chromium--какой-браузер-нужен)
-- [🏗️ Архитектура](#️-архитектура)
-- [🧪 Тесты](#-тесты)
-- [🔨 Сборка из исходников](#-сборка-из-исходников-разработчикам)
-- [🔄 CI/CD](#-cicd)
-- [❓ FAQ / Решение проблем](#-faq--решение-проблем)
-- [🗺️ Roadmap](#️-roadmap)
-- [📄 Лицензия](#-лицензия)
-
----
-
-## ✨ Возможности
-
-| | Возможность | Что это даёт |
-|---|---|---|
-| 🧩 | **Изолированные Chromium-профили** | Каждый профиль = свой `--user-data-dir`: cookies, localStorage, IndexedDB, кэш, permissions, вкладки |
-| 🔁 | **Persistent state** | Закрыл браузер → открыл → всё на месте. Профили не смешиваются, двойной запуск одного профиля запрещён |
-| ⌨️ | **CLI + 🖥️ GUI на одной логике** | Терминал и окно — тонкие оболочки над одним `ProfileService`. Что умеет CLI — то умеет и GUI |
-| 🌐 | **Пул прокси с гео** | Сбор из источников, проверка в 64 воркера, пинг, страна, автоподбор конфига под прокси |
-| 🩺 | **`doctor` fail-closed gate** | Перед стартом профиль проверяется. `BLOCKED` = старт запрещён + инструкция как чинить |
-| 🌍 | **Гео-консистентность** | Язык ↔ часовой пояс ↔ локаль ↔ страна прокси синхронизируются автоматически |
-| 🍪 | **Бэкап cookies** | Экспорт/импорт cookies профиля |
-| 🇷🇺🇬🇧 | **EN/RU интерфейс** | Переключение языка GUI с сохранением |
-| 📦 | **Автономные .exe / .app** | Python, Qt и все зависимости внутри. Ставить Python не нужно |
-| 🧪 | **580+ тестов** | CRUD, lifecycle, миграции, Chromium через stub-бинарник, GUI headless |
-
----
-
-## 🧱 Как это устроено
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    ТЫ (пользователь)                     │
-│            ⌨️ терминал        🖥️ окно приложения          │
-└───────────┬─────────────────────────┬───────────────────┘
-            │                         │
-            ▼                         ▼
-     ┌────────────┐            ┌──────────────┐
-     │    CLI     │            │     GUI      │
-     │  app ...   │            │  PySide6/Qt6 │
-     │ main.py    │            │  + workers   │
-     └─────┬──────┘            └──────┬───────┘
-           │         один и тот же    │
-           └──────────► Container ◄───┘
-                    bootstrap() из di.py
-                           │
-                           ▼
-                  ┌─────────────────┐
-                  │ ProfileService  │  ← вся бизнес-логика
-                  │ ProxyService    │
-                  │ + doctor gate   │
-                  └────┬───────┬────┘
-                       │       │
-              ┌────────▼──┐ ┌──▼─────────────┐
-              │  SQLite   │ │ ChromiumManager │
-              │ +миграции │ │ --user-data-dir │
-              └───────────┘ └─────────────────┘
-```
-
-> **Золотое правило:** GUI и CLI никогда не трогают SQLite и Chromium напрямую — только через сервисы. Поэтому поведение в окне и в терминале всегда одинаковое.
-
----
-
-## 📦 Готовые сборки — без Python ⭐ <a id="-готовые-сборки-без-python--рекомендуется"></a>
-
-> **Это самый простой способ.** Ничего ставить не надо: Python, Qt и все библиотеки уже упакованы внутрь.
-
-| ОС | Файл | Что делать |
-|---|---|---|
-| 🪟 **Windows 10/11 x64** | `Antidetect.exe` | 1. Скачай из [Releases](https://github.com/katsuna777/ANTIDETECT/releases) <br/> 2. Положи в **пустую папку** <br/> 3. Двойной клик — всё |
-| 🍎 **macOS 13+** | `Antidetect.dmg` | 1. Скачай из [Releases](https://github.com/katsuna777/ANTIDETECT/releases) <br/> 2. Открой `.dmg` <br/> 3. Перетащи `Antidetect.app` в **Applications** <br/> 4. Запусти |
-
-<details>
-<summary><b>⚠️ macOS: «файл повреждён / не удаётся открыть» — что делать</b></summary>
-
-<br/>
-
-Unsigned-приложения macOS блокирует по умолчанию. Решение в терминале:
-
-```bash
-xattr -cr /Applications/Antidetect.app
-```
-
-Затем правый клик по `Antidetect.app` → **Открыть** → подтвердить.
-
-</details>
-
-<details>
-<summary><b>⚠️ Windows SmartScreen ругается — что делать</b></summary>
-
-<br/>
-
-Нажми **«Подробнее» → «Выполнить в любом случае»**. EXE не подписан кодовым сертификатом — это нормально для v0.x.
-
-</details>
-
-**Требования для готовых сборок:**
-
-- 🪟 Windows 10/11 x64 **или** 🍎 macOS 13+
-- 🌍 Установленный Chrome / Chromium / Brave / Edge *(внутрь сборки браузер не вшит — см. [почему](#-chromium--какой-браузер-нужен))*
-- 💾 ~150 МБ на диске + место под профили
-
----
-
-## 🚀 Быстрый старт за 5 минут
-
-Запуск **из исходников** — для разработчиков и тех, кто хочет всё контролировать через терминал.
-
-### Шаг 0. Что должно стоять на чистом компьютере
-
-| Зависимость | Версия | Как проверить | Где взять |
-|---|---|---|---|
-| 🐍 **Python** | **3.12+** (разработка на 3.12 / 3.13) | `python3 --version` | [python.org](https://www.python.org/downloads/) |
-| 📦 **Git** | любая свежая | `git --version` | [git-scm.com](https://git-scm.com/) |
-| 🌍 **Chromium-браузер** | Chrome / Chromium / Brave / Edge | открой браузер — он есть? | [chrome.google.com](https://www.google.com/chrome/) |
-
-### Шаг 1. Клонируй репозиторий
-
-```bash
-git clone https://github.com/katsuna777/ANTIDETECT.git
-cd ANTIDETECT
-```
-
-### Шаг 2. Создай и активируй виртуальное окружение
-
-**macOS / Linux:**
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-```
-
-**Windows (PowerShell):**
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-> Если PowerShell ругается на скрипты: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` — и повтори.
-
-### Шаг 3. Установи зависимости
-
-```bash
-# ── обязательно: рантайм приложения ──────────────────────
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# ── чтобы работала команда `app` / `app-gui` из любого места ──
-pip install -e .
-
-# ── дополнительно: для запуска тестов ────────────────────
-pip install -r requirements-dev.txt
-```
-
-Проверка, что всё встало:
-
-```bash
-pip list | grep -iE "pyside|websocket|platformdirs|certifi|pytest"
-```
-
-### Шаг 4. Настрой окружение (необязательно)
-
-Файл `.env` **не требуется** для запуска — значения по умолчанию уже разумные. Только если автообнаружение не нашло браузер или хочешь свою папку данных:
-
-```bash
-cp .env.example .env
-```
-
-Открой `.env` и при необходимости задай (подробности — [ниже](#️-переменные-окружения)):
-
-```bash
-ANTIDETECT_CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-ANTIDETECT_DATA_DIR="./data"
-```
-
-> 🔒 `.env` уже в `.gitignore`. Реальные секреты никогда не коммить.
-
-### Шаг 5. Запусти 🚀
-
-**Вариант А — окно приложения (GUI):**
-
-```bash
-python -m app.gui
-# или коротко, после `pip install -e .`:
-app-gui
-```
-
-**Вариант Б — терминал (CLI):**
-
-```bash
-# через установленный entry-point:
-app profile list
-
-# или напрямую без установки:
-python main.py profile list
-```
-
-Оба способа равнозначны — выбирай любой. Дальше — [полная шпаргалка по CLI](#️-cli--терминал-без-мыши) 👇
-
-### Шаг 6. Первый профиль за 30 секунд
-
-```bash
-app profile create "Мой первый"
-app profile list
-app profile doctor 1
-app profile start 1
-```
-
-Откроется Chromium с чистым изолированным профилем. Закрой окно браузера или выполни `app profile stop 1` — состояние сохранится.
-
-### Шаг 7. Проверь, что ничего не сломано
-
-```bash
-pytest -q
-```
-
-Ожидаемо: `581 passed`. GUI-тесты headless (без дисплея / на CI):
-
-```bash
-QT_QPA_PLATFORM=offscreen pytest -q
-```
-
----
-
-## 📋 Зависимости
-
-Всё, что тянет проект, — 4 runtime-пакета + pytest для тестов + PyInstaller для сборки. Ничего экзотического.
-
-### Runtime (`requirements.txt`)
-
-| Пакет | Зачем нужен |
+# Antidetect
+
+Изолированные профили Chrome, у каждого свой отпечаток, cookies и прокси. Приложение на PySide6 (Windows / macOS), та же логика доступна из командной строки.
+
+Каждый профиль — отдельный браузер: аккаунты не пересекаются, а сайты видят согласованную «машину» — ОС, видеокарту, экран, язык, часовой пояс и IP, которые не противоречат друг другу.
+
+## Что умеет
+
+- **Свой отпечаток у каждого профиля.** Новый профиль получает сгенерированную согласованную конфигурацию (ОС → UA → видеокарта → экран → железо). Профили никогда не делят отпечаток, даже на одном компьютере: canvas/audio-шум привязан к профилю, стабилен между запусками и различается между профилями.
+- **Любая ОС.** Windows, macOS или Linux на любом хосте. Версия Chrome в отпечатке всегда равна установленной — UA не может разойтись с движком.
+- **Язык и часовой пояс сами.** По умолчанию они подбираются по IP: через прокси или по вашему обычному подключению. Отключается галочкой в профиле.
+- **Прокси.** Вставьте строку `host:port:логин:пароль` (и другие привычные форматы) — прокси проверяется, из него берётся страна. Прокси с логином работают через локальный шлюз.
+- **Работа с профилем.** Клик по строке раскрывает её: основная информация и быстрое редактирование (название, рабочее пространство, теги, стартовая страница, заметки). Поиск, фильтры, дублирование, импорт/экспорт cookies, массовые действия, контекстное меню. Закрыли последнюю вкладку — профиль остановился; вкладки восстанавливаются при следующем запуске.
+- **Свой Chrome.** Устанавливать Chrome заранее не нужно: «Настройки → Браузер → Скачать Chrome» (или кнопка в плашке «Chrome не найден», или `antidetect browser download`) скачивает официальную сборку Google (Chrome for Testing, около 150 МБ) в папку данных. Она не обновляется сама, поэтому версия в отпечатке никогда не расходится с движком; «Обновить Chrome» берёт новую, две последние версии хранятся. Скачивание идёт только из хранилища Google по HTTPS, архив проверяется на повреждения, распаковывается безопасно и перед использованием запускается для проверки версии. Приоритет: выбранный вами путь → скачанный Chrome → установленный в системе.
+- **Несколько профилей сразу.** Кнопка «···» → «Создать несколько…» (или `Ctrl/⌘ Shift N`): название с нумерацией («Shop 1», «Shop 2»…), система, список прокси — каждому профилю по своему, один прокси на два профиля не выдаётся; общие пространство и теги. У каждого профиля свой отпечаток. То же из терминала: `antidetect profile bulk`.
+- **Перенос профиля.** Меню профиля → «Экспортировать…» сохраняет настройки, отпечаток (и «зерно» шума canvas/audio, чтобы на другом компьютере он остался прежним) и данные браузера в один `.zip`; «···» → «Импортировать профиль…» создаёт из него новый профиль. Прокси в файл попадает только по вашему выбору (логин и пароль — открытым текстом). Cookies и сохранённые пароли привязаны к компьютеру: на другом профиль откроется с тем же отпечатком, но без входа в аккаунты.
+- **Настройки защиты профиля.** WebRTC (автоматически — скрыт, пока есть прокси; всегда скрыт; не скрывать, если важны звонки), шум canvas/audio и цветовая схема сайтов (светлая, тёмная или как в системе) задаются отдельно для каждого профиля. Новые профили по умолчанию «светлые» и не зависят от темы вашей системы; профили, созданные раньше, продолжают следовать системе, чтобы аккаунты не заметили перемены.
+- **Рабочие пространства и теги.** Профили можно раскладывать по рабочим пространствам (клиент, проект, команда). Теги создаются один раз (название и цвет) и назначаются из списка — одному профилю или сразу многим.
+- **Корзина.** Удалённый профиль уходит в корзину со всеми cookies и отпечатком; его можно вернуть, а через заданное число дней (по умолчанию 30) он удаляется окончательно. Сразу после удаления всплывает «Отменить».
+- **Активность.** Запуски, остановки, ошибки, новые профили, теги и прокси — лента событий, которая переживает перезапуск.
+- **Проверка отпечатка.** Настройки → «Проверка отпечатка» и меню профиля: CreepJS, Pixelscan, IPHey, BrowserLeaks, Sannysoft — открываются прямо в этом профиле.
+- **API для автоматизации.** Локальный HTTP-API: скрипт создаёт и запускает профиль, получает адрес браузера и подключает Playwright, Puppeteer или Selenium — как в других антидетектах. Несколько ключей доступа, инструкция в самом приложении (см. [«API»](#api-для-автоматизации)).
+- **EN / RU, светлая и тёмная тема.**
+
+## Интерфейс
+
+Слева — шесть разделов (`Ctrl+1…6`):
+
+| Раздел | Что внутри |
 |---|---|
-| `websocket-client >= 1.8` | CDP/общение с Chromium |
-| `platformdirs >= 4` | OS user-data dir для собранного приложения (`%APPDATA%`, `~/Library/...`, `~/.local/share`) |
-| `PySide6 >= 6.6` | GUI на Qt6 |
-| `certifi >= 2024.0` | CA-сертификаты для HTTPS (прокси-источники, пробы) |
+| **Профили** | Таблица с кнопкой запуска, флагом и состоянием прокси (кнопки «проверить» и «подробности»), числом cookies, датами запуска и создания; поиск, фильтры (статус, система, прокси, cookies, дата создания, теги), сортировка (запоминается), кнопка «···» рядом с «Новый профиль» (создать несколько, импортировать профиль), выбор галочкой на аватаре и плавающая панель массовых действий (запуск, остановка, теги, пространство, корзина), меню `⋯`. **Клик по строке** плавно раскрывает её вниз: информация об отпечатке и прокси, даты, быстрое редактирование и кнопки «Все настройки…», «Дублировать», «Cookies», «Папка», «В корзину». Диалог профиля — вкладки «Основное», «Прокси», «Отпечаток», «Заметки и теги» |
+| **Прокси** | Свои прокси: вставка в любом формате, проверка, страна с флагом, пинг, кто использует; бесплатный список |
+| **Активность** | Лента событий по дням (профили, прокси, теги и пространства, ошибки) с фильтром и поиском; красный значок в меню — что-то не запустилось |
+| **API** | Переключатель, адрес и порт, ключи доступа, кнопка «Инструкция» со всеми методами, типами и готовыми скриптами |
+| **Корзина** | Удалённые профили: «Восстановить», «Удалить навсегда», «Очистить корзину», срок хранения (7–90 дней или «пока не удалю») |
+| **Настройки** | Вкладки: «Основные» (тема, язык, Chrome, подтверждение удаления навсегда, папка данных), «Проверка отпечатка» (CreepJS, Pixelscan, IPHey, BrowserLeaks, Sannysoft одной кнопкой), «Журнал» (технический журнал сессии с фильтром и экспортом) |
 
-### Dev (`requirements-dev.txt`)
+Под разделами — рабочие пространства (клик показывает только их профили, `+` создаёт новое, правый клик — изменить или удалить) и теги (клик фильтрует профили, `+` создаёт тег, «Управление тегами» — переименовать, перекрасить, удалить). Снизу слева видно, какой Chrome найден, и переключатель темы.
+`Ctrl/⌘ K` открывает быстрый поиск: профили (Enter — запустить или остановить), страницы, рабочие пространства, теги и действия. Все горячие клавиши собраны в меню (на macOS — в системной строке меню).
+Окно macOS без отдельной полосы заголовка (нужен Qt ≥ 6.9; `ANTIDETECT_NATIVE_TITLEBAR=1` возвращает обычный заголовок).
 
-| Пакет | Зачем нужен |
+## Запуск
+
+Нужен Python 3.12+. Chrome ставить необязательно: приложение скачает его само (см. «Свой Chrome»); подойдёт и уже установленный Google Chrome (Chromium, Edge, Brave тоже).
+
+```bash
+uv sync                      # или: python3 -m venv .venv && source .venv/bin/activate && pip install -e .
+antidetect-gui               # окно приложения (то же: python -m antidetect.gui)
+```
+
+Готовые сборки — в Releases: `Antidetect-<версия>-windows-x64.exe` (Windows), `Antidetect-<версия>-macos-arm64.dmg` (Apple Silicon) и `…-macos-x64.dmg` (Intel), для macOS 13+; рядом `SHA256SUMS.txt`. Пока без подписи: Windows SmartScreen — «Подробнее → Выполнить в любом случае»; macOS — `xattr -cr /Applications/Antidetect.app`, затем правый клик → Открыть.
+
+Браузер выбирается так: путь из «Настройки → Браузер» или переменной `ANTIDETECT_CHROMIUM_PATH` → скачанный приложением Chrome → найденный в системе. Если нет ни одного, в списке профилей появится плашка со скачиванием.
+
+## Быстрый старт
+
+1. **Новый профиль** → выберите систему (по умолчанию ваша — это самый естественный вариант).
+2. Если есть прокси — «Добавить новый прокси…» и вставьте строку. Нажмите «Проверить».
+3. **Создать и запустить.** Браузер откроется уже готовым.
+4. ПКМ по профилю → «Проверить отпечаток».
+
+Закрывая приложение, вы останавливаете и запущенные профили: защита работает, только пока Antidetect открыт (см. ниже).
+
+## API для автоматизации
+
+Вкладка **API** включает локальный сервер на `127.0.0.1` (по умолчанию порт `47831`). Скрипт запускает профиль и получает адрес работающего браузера, к которому подключаются привычные инструменты. Запускается ваш установленный Chrome, отдельный браузер не нужен.
+
+1. Вкладка **API** → включите переключатель, скопируйте ключ (иконка «копировать» у ключа).
+2. Создайте и запустите профиль:
+
+   ```bash
+   curl -s -X POST http://127.0.0.1:47831/v1/profiles -H "Authorization: Bearer <ключ>" \
+        -d '{"name": "shop-1", "platform": "windows", "start": true}'
+   ```
+
+   В ответе `connection.ws` (для Playwright и Puppeteer) и `connection.debugger_address` (для Selenium).
+3. Подключите инструмент: готовые скрипты для Playwright, Puppeteer, Selenium и curl с вашим адресом и ключом — в **API → Инструкция**.
+4. Остановите профиль: `POST /v1/profiles/{id}/stop`.
+
+Полное описание — методы, типы, ошибки — в [docs/API.md](docs/API.md) ([English](docs/API.en.md)); то же самое показывает кнопка «Инструкция». `antidetect api docs` печатает его в терминале.
+
+Что важно знать:
+
+- **Безопасность.** Сервер слушает только `127.0.0.1`, каждый запрос требует ключ, запросы из веб-страниц отклоняются. Ключей можно сделать сколько угодно (по одному на скрипт или человека), удалённый ключ перестаёт работать сразу.
+- **Без окна.** `antidetect api serve` запускает API без интерфейса; слой защиты живёт в этом процессе, поэтому он должен оставаться открытым, пока работают скрипты.
+- **Размер окна не меняйте.** У профиля свой экран: Puppeteer подключайте с `defaultViewport: null`, в Playwright работайте в `browser.contexts[0]` (или `new_context(no_viewport=True)`), иначе инструмент подменит экран. Подробности — в инструкции.
+- **Отключение не останавливает профиль:** `browser.close()`, `disconnect()`, `driver.quit()` лишь отпускают браузер.
+
+## Как устроена защита
+
+Chrome управляется по протоколу DevTools; ни одна вкладка, фрейм или воркер не исполняет код страницы без патча — каждая цель создаётся «на паузе» и возобновляется только после настройки.
+
+| Что | Как |
 |---|---|
-| `pytest >= 8` | Тесты (581 шт.) |
+| User-Agent, Client Hints, `navigator.platform`, язык, часовой пояс, число ядер, размер экрана и DPR, геолокация | Нативно через CDP (`Emulation.*`) — без JS-следов |
+| WebGL (строки и лимиты видеокарты), `deviceMemory`, canvas/audio, воркеры, service/shared worker | JS на уровне прототипов, нативный `toString` в любом realm |
+| Утечка IP | С прокси WebRTC не создаёт публичных адресов: политика записывается в настройки профиля до запуска Chrome (флаг `--force-webrtc-ip-handling-policy` Chrome 154 игнорирует — проверено). Без прокси WebRTC не трогается: адрес и так ваш |
+| Экран и цвет | `--force-color-profile` задаёт `color-gamut` и `dynamic-range` нативно (sRGB для Windows/Linux, P3 для ретина-Mac); `screen.colorDepth` — 24 или 30 в JS |
+| WebGPU | `vendor` и `architecture` адаптера берутся из той же видеокарты, что и в WebGL (в окне и во всех воркерах) |
+| Батарея | Как у десктопа без батареи (заряжается, 100 %), реальная батарея хоста не видна |
+| `navigator.connection` и квота хранилища | У каждого профиля свои правдоподобные значения (по умолчанию они берутся из вашей сети и диска и одинаковы у всех профилей на компьютере) |
+| Цветовая схема | `prefers-color-scheme` задаётся профилем нативно через CDP (без JS-следов), а не берётся из темы системы |
+| Полосы прокрутки | Профиль Windows/Linux на Mac получает обычные видимые полосы (15 px вместо 0, который сразу выдаёт Mac) |
 
-### Build (`requirements-build.txt`)
+Патчи накладываются только там, где значение отличается от нативного. Подробности и список сознательно не делаемых вещей — в `src/antidetect/infrastructure/stealth/`.
 
-| Пакет | Зачем нужен |
+## Что проверено
+
+Реальные сторонние детекторы, профили Windows / macOS / Linux на Mac-хосте (Chrome 154):
+
+| Проверка | Результат |
 |---|---|
-| `pyinstaller >= 6` | Упаковка в `Antidetect.exe` / `Antidetect.app` |
+| CreepJS | 0 «lies», 0% headless, 0% stealth, `extension: unknown` — как у чистого Chrome |
+| deviceandbrowserinfo.com | `isBot: false`, все 22 сигнала в норме (CDP, client hints, воркеры, iframe, GPU) |
+| bot.incolumitas.com | все «New Detection Tests» — OK |
+| bot.sannysoft.com | без провалов |
+| iphey.com | «Trustworthy», MX 100, все пункты зелёные — для Windows, macOS и Linux (с авто-гео) |
+| Pixelscan, ОС = ОС хоста | «No masking detected» |
+| WebRTC через прокси (живой тест на Chrome 154) | без прокси `srflx` с реальным адресом есть, с прокси — список кандидатов пуст |
 
-Установка одним блоком (всё сразу — рантайм + тесты + сборка):
+## Ограничения
 
-```bash
-pip install -r requirements-build.txt   # тянет requirements.txt за собой
-pip install -r requirements-dev.txt
-pip install -e .
-```
+- **ОС, отличная от вашей.** Проходит все перечисленные проверки, кроме самых строгих: шрифты, рендер эмодзи и сглаживание текста — свойства реальной ОС, их нельзя честно изменить из JS/CDP. Pixelscan такой профиль не анализирует до конца. Попытка замаскировать шрифты через `@font-face` сделала хуже (IPHey падал с 100 до 70), поэтому она выключена и доступна только как эксперимент (`ANTIDETECT_MASK_FONTS=1`). Нужна максимальная естественность — выбирайте ту же ОС, что у вас.
+- **Защита живёт в процессе приложения.** Если закрыть Antidetect, не останавливая профиль, вкладки, открытые позже, останутся без патча. Поэтому при выходе приложение останавливает профили, а `antidetect profile start` держит терминал открытым.
+- **Ссылки в новой вкладке.** Вкладки, которые открывает само приложение (стартовая страница, «Проверка», восстановленные после перезапуска), получают подмену до первого запроса. Вкладку, открытую кликом по ссылке с `target=_blank` (или Ctrl/средним кликом), создаёт сам Chrome, и её первый HTTP-запрос уходит с заголовком `Sec-CH-UA-Platform` настоящей ОС; значения, которые видит JavaScript, подменены. Если это важно — открывайте такие ссылки в той же вкладке.
+- **Это не пропатченное ядро.** Подход намеренно строится поверх обычного Chrome (обновления, TLS-отпечаток и фичи настоящие). Сайты уровня банков/антифрода с серверным анализом поведения и IP-репутации это не обходит — и не должно.
+- **Что ещё берётся от хоста.** Шрифты (см. выше); точная ширина полосы прокрутки у Windows (17 px, у нас 15); лимиты и список функций WebGPU (`adapter.limits` / `features` — от видеокарты хоста); набор медиаустройств (камера и микрофон хоста видны у всех профилей: убирать их ломало бы звонки).
+- **Звонки через WebRTC (Meet, Discord…) с прокси.** Без UDP они идут по TCP — это медленнее и иногда не стартует. Для такого профиля выберите на вкладке «Прокси» режим WebRTC «Не скрывать» (реальный адрес тогда может быть виден сайтам).
+- **Качество прокси.** IP датацентра остаётся IP датацентра; «Proxy detected» на Pixelscan — про него.
 
----
+## Прокси
 
-## ⌨️ CLI — терминал без мыши
+Принимаются форматы: `host:port`, `host:port:логин:пароль`, `логин:пароль:host:port`, `логин:пароль@host:port`, `host:port@логин:пароль`, `socks5://логин:пароль@host:port`. Свои прокси никогда не удаляются автоочисткой; кнопка «Бесплатные прокси» качает публичные списки, проверяет их и сохраняет только прошедшие проверку (непроверенные и нерабочие в таблицу не попадают, даже если остановить прогон) — такие прокси медленные и недолговечные.
 
-> Всё делается из терминала. GUI не нужен вообще. Две равнозначные формы вызова:
-> `app …` (после `pip install -e .`) **или** `python main.py …` (без установки, из корня репо).
-
-### Профили — основа всего
-
-```bash
-app profile create "Test 01"          # создать профиль
-app profile list                      # таблица: ID / NAME / STATUS
-app profile show 1                    # детали профиля
-app profile edit 1 "New Name"         # переименовать (alias: update)
-app profile start 1                   # запустить Chromium с этим профилем
-app profile stop 1                    # остановить
-app profile restart 1                 # перезапустить
-app profile duplicate 1               # копия профиля вместе с browser state
-app profile delete 1 --yes            # удалить строку и каталог данных
-```
-
-### Диагностика перед стартом
+## Командная строка
 
 ```bash
-app profile doctor 1                  # OK / BLOCKED + как чинить
-app profile doctor 1 --no-probe       # офлайн-режим, без Google-пробы
+antidetect profile create "Shop" --platform windows --tags work --proxy-id 1
+antidetect profile list
+antidetect profile start 1     # держит терминал открытым; --detach — вернуться сразу
+antidetect profile stop 1
+antidetect profile delete 1    # в корзину; --permanent — навсегда (с папкой профиля)
+antidetect profile trash       # что лежит в корзине
+antidetect profile restore 1   # вернуть из корзины
+antidetect profile bulk "Shop" --count 20 --platform windows --proxies-file proxies.txt --workspace Clients
+                               # 20 профилей: Shop 1…Shop 20, каждому следующий прокси из файла
+antidetect profile export 1 --to ~/backups          # профиль → .zip (--with-proxy добавит прокси)
+antidetect profile import backup.zip --name "Shop"  # новый профиль из .zip
+antidetect profile update 1 --webrtc allow --no-canvas-noise   # режим WebRTC и шум отпечатка
+
+antidetect proxy add 1.2.3.4:8080:user:pass --check
+antidetect proxy list
+antidetect config list         # отпечатки (у каждого профиля свой, fp-<имя>)
+antidetect cookies export 1
+antidetect profile doctor 1    # объясняет риски; почти всё исправляется автоматически
+
+antidetect browser status      # какой Chrome запускает профили, какие версии скачаны
+antidetect browser download    # скачать актуальный Chrome (--channel Stable|Beta|Dev|Canary)
+antidetect browser check-update  # есть ли у Google версия новее скачанной
+
+antidetect api serve           # API без окна (токен и порт печатаются)
+antidetect api keys            # ключи доступа: add / rename / regenerate / remove
+antidetect api examples        # готовые скрипты Playwright, Puppeteer, Selenium, curl
+antidetect api docs --lang ru  # инструкция по API (Markdown)
 ```
 
-> Если `doctor` говорит `BLOCKED` — `start` откажет с объяснением. Сначала чиним, потом стартуем. Детали — [ниже](#-doctor--gate-перед-стартом-и-google-login).
+`antidetect <группа> --help` покажет всё остальное.
 
-### Прокси профиля
+## Переменные окружения
 
-```bash
-app profile proxy 1 --set 3               # назначить прокси #3 (конфиг подтянется сам)
-app profile proxy 1 --set 3 --no-auto-config  # назначить, конфиг не трогать
-app profile proxy 1 --clear               # отвязать прокси
-```
-
-### Пул прокси
-
-```bash
-app proxy list                        # таблица: working сверху, лучший пинг первым
-app proxy refresh                     # собрать → распарсить → дедуп → проверить → обновить пул
-app proxy check 3                     # проверить один прокси по id
-app proxy check-all                   # перепроверить все
-app proxy remove-dead                 # удалить подтверждённые DEAD
-```
-
-### Конфигурации браузера
-
-```bash
-app config list                       # список browser-конфигураций
-app config show 1                     # детали конфигурации
-```
-
-### Cookies
-
-```bash
-app cookies backup 1                  # сохранить cookies профиля #1
-app cookies restore 1                 # восстановить cookies профиля #1
-```
-
-### Справка по любой команде
-
-```bash
-app --help
-app profile --help
-app proxy --help
-app profile doctor --help
-```
-
----
-
-## 🖥️ GUI-приложение
-
-GUI — тонкая презентационная прослойка над тем же `Container`/`bootstrap()`, что использует CLI. Напрямую SQLite/Chromium из GUI недоступны.
-
-```bash
-python -m app.gui        # основной способ
-app-gui                  # тоже самое, после `pip install -e .`
-```
-
-**Что внутри:**
-
-- 🧵 Тяжёлые операции (старт браузера, проверка прокси) — на `QThreadPool` через workers. Интерфейс **не зависает**
-- 🪟 Один `Container` на весь сеанс, корректно закрывается по `QApplication.aboutToQuit`
-- 🇷🇺🇬🇧 Переключение EN/RU с сохранением выбора
-- 🌐 Сводка прокси, живой список обновления без лагов, флаг страны и endpoint в строках профилей
-- 🎨 Splash screen (`ANTIDETECT_NO_SPLASH=1` — пропустить)
-
-Полезные переменные для запуска GUI:
-
-```bash
-ANTIDETECT_NO_SPLASH=1 python -m app.gui   # без сплэша
-QT_QPA_PLATFORM=offscreen python -m app.gui  # headless (для тестов/CI)
-```
-
----
-
-## 🌐 Прокси
-
-1. `app proxy refresh` — собирает кандидаты из `ANTIDETECT_PROXY_SOURCES` (или встроенных), дедуплицирует и проверяет в **64 воркера**.
-2. `app proxy list` — показывает живые сверху: статус, пинг, страна, endpoint.
-3. `app profile proxy 1 --set 3` — привязывает прокси к профилю **и автоматически** подгоняет fingerprint-конфиг (язык, локаль, часовой пояс) под страну прокси.
-4. Требование: страна прокси должна быть известна (`app proxy check 3`). Без страны конфиг не трогается — только warning.
-
-```bash
-# полный цикл в 4 команды:
-app proxy refresh
-app proxy list
-app proxy check 3
-app profile proxy 1 --set 3
-```
-
----
-
-## 🩺 Doctor — gate перед стартом и Google login
-
-Перед каждым `start` профиль проходит **fail-closed** диагностику (проверка fingerprint/прокси, блокирующих вход в Google):
-
-```bash
-app profile doctor 1              # verdict: OK / BLOCKED + инструкция
-app profile start 1               # при BLOCKED — отказ с объяснением
-```
-
-Типичные причины `BLOCKED` и лечение:
-
-| Причина | Что делать |
+| Переменная | Назначение |
 |---|---|
-| Прокси DEAD / таймаут | `app proxy check-all`, затем `remove-dead` + `refresh` |
-| Страна прокси неизвестна | `app proxy check <id>` — дождаться гео |
-| Рассинхрон гео ↔ часовой пояс | `app profile proxy 1 --set <id>` без `--no-auto-config` |
-| Нет сети (офлайн) | `app profile doctor 1 --no-probe` для локальной проверки |
+| `ANTIDETECT_CHROMIUM_PATH` | Путь к Chrome/Chromium/Edge/Brave |
+| `ANTIDETECT_DATA_DIR` | Папка данных (БД, профили, журналы) |
+| `ANTIDETECT_DISABLE_STEALTH` | `1` — выключить слой защиты (диагностика) |
+| `ANTIDETECT_STEALTH_TRACE` | Путь к файлу трассировки целей/патчей |
+| `ANTIDETECT_MASK_FONTS` | `1` — экспериментальная маскировка шрифтов для чужой ОС (по умолчанию выключена) |
+| `ANTIDETECT_NO_SANDBOX` | `1` — запуск без sandbox (Linux root/CI) |
+| `ANTIDETECT_NATIVE_TITLEBAR` | `1` — на macOS оставить обычную полосу заголовка |
+| `ANTIDETECT_PROXY_SOURCES` / `_WORKERS` / `_TIMEOUT` | Настройка списка бесплатных прокси |
 
----
-
-## ⚙️ Переменные окружения
-
-Проект читает **только** переменные `ANTIDETECT_*` (плюс legacy `CHROME_PATH`) через `os.environ`. Никакой dotenv-зависимости нет — просто экспортируй или положи в `.env`.
-
-| Переменная | Где взять значение | По умолчанию |
-|---|---|---|
-| `ANTIDETECT_CHROMIUM_PATH` / `CHROME_PATH` | Полный путь к бинарю Chrome/Chromium/Brave/Edge. Нужен **только если автообнаружение не нашло браузер** | Автопоиск по типовым путям и `PATH` |
-| `ANTIDETECT_DATA_DIR` | Любой writable-каталог под SQLite + профили + логи | `./data` (из исходников) · OS user-data dir (в сборке) |
-| `ANTIDETECT_LOGS_DIR` | Каталог логов Chromium | Внутри `data_dir` |
-| `ANTIDETECT_PROXY_SOURCES` | JSON-список URL источников прокси (`http(s)://…`) | Встроенные источники |
-| `ANTIDETECT_PROXY_WORKERS` | Число воркеров проверки (напр. `64`) | `64` |
-| `ANTIDETECT_PROXY_TIMEOUT` | Таймаут проверки, сек | см. `.env.example` |
-| `ANTIDETECT_PROXY_MAX_FAILURES` / `_DEAD_POLICY` / `_STALE_MINUTES` | Тюнинг смерти/устаревания прокси | см. `.env.example` |
-| `ANTIDETECT_DISABLE_STEALTH` | `1` — выключить stealth-инжекты (отладка) | выкл. |
-| `ANTIDETECT_NO_SPLASH` | `1` — пропустить splash screen | выкл. |
-| `ANTIDETECT_NO_SANDBOX` | `1` — запуск Chromium без sandbox (Linux root/CI) | выкл. |
-| `ANTIDETECT_STEALTH_TRACE` | Путь для stealth-trace дампа | выкл. |
-
-Шаблон со всеми ключами: [`.env.example`](.env.example)
-
----
-
-## 🗂️ Где лежат данные
-
-Каждый профиль получает собственный каталог Chromium, который передаётся через `--user-data-dir`:
+## Данные
 
 ```
-data/
-├── antidetect.db          # SQLite: профили, прокси, конфиги, логи
-└── profiles/
-    ├── profile_001/       # cookies, localStorage, IndexedDB, cache, вкладки
-    ├── profile_002/
-    └── profile_003/
+<data>/antidetect.db          # профили (и корзина), рабочие пространства, теги, отпечатки, прокси, настройки, активность, журнал
+<data>/profiles/profile_001/  # папка Chrome: cookies, localStorage, кэш, вкладки
+<data>/browsers/<версия>-<платформа>/  # скачанные приложением Chrome
 ```
 
-| Режим | Где данные |
-|---|---|
-| 🏃 Из исходников | `./data` в корне репозитория |
-| 📦 Собранное приложение | OS user-data dir: `%APPDATA%/Antidetect` · `~/Library/Application Support/Antidetect` · `~/.local/share/Antidetect` |
-| 🔧 Принудительно | Куда указывает `ANTIDETECT_DATA_DIR` (переопределяет всё) |
+Данные лежат в `./data` при запуске из исходников и в папке пользователя ОС в собранном приложении. Миграции схемы применяются автоматически.
 
-Миграции схемы (`schema_migrations` + модули в `src/app/infrastructure/database/migrations/versions/`) применяются **автоматически при старте** — руками ничего делать не надо.
-
----
-
-## 🌍 Chromium — какой браузер нужен
-
-Используется **установленный** в системе браузер — в сборку он **не вшивается** (лицензии + сотни мегабайт веса). Подходит любой из: **Chrome, Chromium, Brave, Edge**.
-
-Порядок поиска бинарника:
-
-1. Параметр из конфигурации приложения
-2. `ANTIDETECT_CHROMIUM_PATH` / `CHROME_PATH`
-3. Типовые пути платформы (`/Applications/Google Chrome.app/…`, `C:\Program Files\Google\Chrome\…` и т.п.)
-4. `PATH` (`which google-chrome` / `chrome` / `chromium` …)
-
-Проверить, что браузер найден:
+## Разработка
 
 ```bash
-# macOS
-ls "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-
-# Windows (PowerShell)
-Get-Command chrome.exe
-
-# Linux
-which google-chrome chromium chromium-browser brave-browser
+uv sync --extra dev                       # окружение + pytest, pytest-xdist
+uv run pytest -n auto                     # ~1000 тестов за ~50 с, GUI headless
+ANTIDETECT_LIVE_BROWSER=1 uv run pytest tests/infrastructure/stealth/test_stealth_cdp.py -k live   # настоящий Chrome
+ANTIDETECT_LIVE_BROWSER=1 uv run pytest tests/api/test_live_api.py                                  # API: подключение к настоящему Chrome
 ```
 
-Не нашлось автоматически? Укажи путь явно:
+Живые тесты запускают Chrome с каждой ОС-подменой и прогоняют `tests/infrastructure/stealth/data/leaktest.js` (дескрипторы, `toString`, воркеры, iframe, popup, service/shared worker, согласованность) и `liebattery.js` (воспроизведение проверок CreepJS).
 
-```bash
-export ANTIDETECT_CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-app profile start 1
-```
+Сборка (кросс-сборки нет): `python packaging/build.py` на той системе, под которую собираете (или обёртки `packaging/build_windows.ps1` / `packaging/build_macos.sh`); нужен `pip install -e ".[build]"`. Тот же скрипт гоняет GitHub Actions; он сам запускает собранное приложение (`--selftest`) и кладёт файл с версией в имени и `.sha256` в `release/`. Выпуск релиза, подпись и стоимость сборок — в [packaging/README.md](packaging/README.md).
 
----
-
-## 🏗️ Архитектура
+Структура:
 
 ```
-GUI (src/app/gui)                 — PySide6 shell + workers (никогда напрямую SQLite/Chromium)
-CLI (src/app/cli)                 — команды profile/config/cookies/proxy (никакой работы с SQLite/Chromium напрямую)
-Application (src/app/application) — ProfileService, ProxyService, ConfigurationService, CookieService, LogService + ports
-Domain (src/app/domain)           — модели, enums, ошибки
-Repositories (src/app/infrastructure/database) — SQLite, миграции
-Infrastructure (src/app/infrastructure/chromium) — ChromiumManager (запуск, reconcile, stub-тестируемый)
-Config + composition root         — src/app/config/settings.py, src/app/di.py → bootstrap()
+src/antidetect/
+  gui/              PySide6, только через Container
+    theme/            палитры, единый QSS, SVG-иконки (резкие на любом DPI), круглые флаги, цвета тегов
+    components/       кнопки, поля, Switch, Segmented, вкладки, toast, диалоги, поповеры, быстрый поиск
+    views/            таблица, отрисовка ячеек (карточки с тенью кешируются) и раскрытие строки (expander.py)
+    models/           Qt-модели и read-модели
+    pages/            профили · прокси · активность · API · корзина · настройки (с проверкой и журналом)
+    dialogs/          профиль, импорт прокси
+    workers/          фоновые задачи (пул потоков)
+  cli/              argparse-команды
+  application/      сервисы: профили (корзина), рабочие пространства, теги, активность, прокси, cookies, журнал, doctor
+    fingerprint/      таблицы железа, генератор, UA и Client Hints
+  domain/           модели, ошибки
+  infrastructure/
+    chromium/         запуск и остановка Chrome, прокси-шлюз
+    stealth/          слой защиты: менеджер целей (cdp.py), спек (spec.py), js/payload.js
+    database/         SQLite, миграции
+    proxy/            парсер, проверка, источники
+  container.py      сборка зависимостей (общая для GUI и CLI)
+  config.py · i18n.py · runtime.py
+tests/              зеркалит структуру src (application, cli, database, gui, infrastructure, integration)
+packaging/          PyInstaller-спеки, build.py (сборка + проверка + упаковка), памятка по релизам
 ```
 
-Ключевые инварианты:
+## Лицензия
 
-- `bootstrap()` в `di.py` собирает зависимости и отдаёт готовый `ProfileService` — и для CLI, и для GUI.
-- Повторный запуск одного профиля запрещён, пока его процесс жив; упавшие процессы вычищаются через reconcile.
-- `duplicate` копирует профиль **вместе с browser state**.
-- `delete --yes` удаляет и строку в БД, и каталог данных.
-
----
-
-## 🧪 Тесты
-
-```bash
-pytest                 # все 581 тестов
-pytest -q              # коротко
-pytest tests/test_lifecycle.py -q     # один файл
-QT_QPA_PLATFORM=offscreen pytest -q   # headless GUI-тесты
-```
-
-Покрытие: CRUD профилей, `duplicate`, репозитории, генерация путей, lifecycle (start/stop/restart), запрет двойного запуска, reconcile упавших процессов, миграции, ChromiumManager через stub-бинарник, GUI (workers, навигация, preferences, error handling).
-
-CI гоняет тот же `pytest` на Python 3.12 при каждом push в `main` и каждом PR.
-
----
-
-## 🔨 Сборка из исходников (разработчикам)
-
-> Обычным пользователям это не нужно — берите готовые файлы из [Releases](https://github.com/katsuna777/ANTIDETECT/releases).
-
-**Кросс-сборка не поддерживается:** `.exe` собирается **только на Windows**, `.dmg` — **только на macOS**.
-
-```bash
-# Windows (только на Windows), PowerShell:
-powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
-# → release/Antidetect.exe   (PyInstaller --onefile, console=False, build-windows.spec)
-
-# macOS (только на macOS):
-bash scripts/build_macos.sh
-# → dist/Antidetect.app → release/Antidetect.dmg   (build-macos.spec, bundle com.antidetect.browser)
-```
-
-Валидация артефактов:
-
-```bash
-python scripts/validate_windows.py --exe release/Antidetect.exe
-python3 scripts/validate_macos.py --app dist/Antidetect.app --dmg release/Antidetect.dmg
-```
-
-Про macOS-архитектуры: CI собирает нативную архитектуру раннера `macos-latest` (сейчас arm64). Universal 2 возможен, только если все колёса (PySide6, websocket-client, platformdirs) есть как fat/universal — workflow печатает `platform.machine()` и `lipo -archs` для контроля. Intel-Mac требует отдельной сборки на x86_64-раннере.
-
----
-
-## 🔄 CI/CD
-
-| Workflow | Что делает | Когда запускается |
-|---|---|---|
-| [`ci.yml`](.github/workflows/ci.yml) | checkout → Python 3.12 → install → `pytest` | `push` в `main`, `pull_request`, `workflow_dispatch` (+ `workflow_call`) |
-| [`build.yml`](.github/workflows/build.yml) | `tests` → `build-windows` + `build-macos` (сборка не стартует при красных тестах) → artifacts `Antidetect.exe` / `Antidetect.dmg` | `push` в `main`, `workflow_dispatch` |
-| [`release.yml`](.github/workflows/release.yml) | то же + публикация **GitHub Release** при push тега `v*` | push тега `v1.0.0`, `workflow_dispatch` |
-
-**Как выпустить новую версию** (для мейнтейнера):
-
-```bash
-git tag v0.0.2
-git push origin v0.0.2
-# → CI прогонит тесты, соберёт exe+dmg и опубликует Release автоматически
-```
-
----
-
-## ❓ FAQ / Решение проблем
-
-<details>
-<summary><b>🐍 <code>python -m app.gui</code> — ModuleNotFoundError: app</b></summary>
-
-<br/>
-
-Запускаешь не из корня репозитория или не стоит `pip install -e .`. Решение:
-
-```bash
-cd /путь/к/ANTIDETECT
-pip install -e .
-python -m app.gui
-```
-
-Либо без установки: `PYTHONPATH=src python -m app.gui`.
-
-</details>
-
-<details>
-<summary><b>🔍 Профиль не стартует: «Chromium binary not found»</b></summary>
-
-<br/>
-
-Поставь Chrome/Chromium/Brave/Edge или укажи путь вручную:
-
-```bash
-export ANTIDETECT_CHROMIUM_PATH="/полный/путь/к/chrome"
-app profile doctor 1
-app profile start 1
-```
-
-</details>
-
-<details>
-<summary><b>🩺 <code>doctor</code> говорит BLOCKED</b></summary>
-
-<br/>
-
-Смотри [таблицу причин](#-doctor--gate-перед-стартом-и-google-login). Коротко: `app proxy check-all` → `remove-dead` → `refresh` → привяжи живой прокси с известной страной.
-
-</details>
-
-<details>
-<summary><b>🪟 PowerShell не даёт активировать venv</b></summary>
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\.venv\Scripts\Activate.ps1
-```
-
-</details>
-
-<details>
-<summary><b>🧪 Падают GUI-тесты на headless-сервере</b></summary>
-
-```bash
-QT_QPA_PLATFORM=offscreen pytest -q
-```
-
-</details>
-
-<details>
-<summary><b>💾 Где моя база? Хочу бэкап</b></summary>
-
-Из исходников — `./data/antidetect.db`. Скопируй файл целиком на остановленном приложении. В сборке — см. [таблицу путей](#️-где-лежат-данные).
-
-</details>
-
----
-
-## 🗺️ Roadmap
-
-- [x] v0.0.1 — CLI + GUI, изолированные профили, пул прокси, doctor-gate, сборки exe/dmg
-- [ ] Подписанные сборки (Windows cert + macOS notarization — убрать варнинги)
-- [ ] Universal 2 dmg (arm64 + x86_64)
-- [ ] Автообновление приложения из Releases
-- [ ] Расширенные fingerprint-пресеты
-
----
-
-## 📄 Лицензия
-
-Proprietary — все права защищены. Использование, копирование и распространение без письменного разрешения автора запрещены.
-
----
-
-<div align="center">
-
-**Сделано с ❤️ и большим количеством терминалов**
-
-[⬆ Наверх](#-antidetect) · [🚀 Быстрый старт](#-быстрый-старт-за-5-минут) · [📦 Releases](https://github.com/katsuna777/ANTIDETECT/releases) · [🐛 Issues](https://github.com/katsuna777/ANTIDETECT/issues)
-
-</div>
+Proprietary — все права защищены.

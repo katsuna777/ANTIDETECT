@@ -4,21 +4,33 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "antidetect"
-version = "0.1.0"
-description = "Antidetect browser — independent Chromium profiles with SQLite-backed state"
+dynamic = ["version"]
+description = "Antidetect browser — isolated Chrome profiles with a consistent, per-profile fingerprint"
 requires-python = ">=3.12"
-dependencies = ["websocket-client>=1.8", "platformdirs>=4", "PySide6>=6.6", "certifi>=2024.0"]
+dependencies = [
+    "PySide6-Essentials>=6.6",   # QtCore / QtGui / QtWidgets / QtSvg only — no WebEngine, no Addons
+    "websocket-client>=1.8",
+    "platformdirs>=4",
+    "certifi>=2024.0",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
-gui = ["PySide6>=6.6"]
+dev = ["pytest>=8", "pytest-xdist>=3"]
+build = ["pyinstaller>=6"]
 
 [project.scripts]
-app = "app.cli.cli:main"
-app-gui = "app.gui.app:main"
+antidetect = "antidetect.cli.main:main"
+antidetect-gui = "antidetect.gui.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "antidetect.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"antidetect.infrastructure.stealth" = ["js/*.js"]
+"antidetect.gui.resources" = ["*.png", "*.ico", "*.icns"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

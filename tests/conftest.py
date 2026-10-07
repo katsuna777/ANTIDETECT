@@ -6,23 +6,23 @@ from pathlib import Path
 
 import pytest
 
-from app.application.profile_path_resolver import ProfilePathResolver
-from app.application.profile_service import ProfileService
-from app.config.settings import AppConfig
-from app.domain.enums.profile_status import ProfileStatus
-from app.infrastructure.chromium.chromium_manager import ChromiumManager
-from app.infrastructure.database.connection import Database
-from app.infrastructure.database.migrations import run_migrations
-from app.infrastructure.database.repositories.browser_configuration_repository import (
+from antidetect.application.profile_path_resolver import ProfilePathResolver
+from antidetect.application.profile_service import ProfileService
+from antidetect.config import AppConfig
+from antidetect.domain.enums.profile_status import ProfileStatus
+from antidetect.infrastructure.chromium.chromium_manager import ChromiumManager
+from antidetect.infrastructure.database.connection import Database
+from antidetect.infrastructure.database.migrations import run_migrations
+from antidetect.infrastructure.database.repositories.browser_configuration_repository import (
     SqliteBrowserConfigurationRepository,
 )
-from app.infrastructure.database.repositories.profile_repository import (
+from antidetect.infrastructure.database.repositories.profile_repository import (
     SqliteProfileRepository,
 )
-from app.infrastructure.database.repositories.proxy_repository import (
+from antidetect.infrastructure.database.repositories.proxy_repository import (
     SqliteProxyRepository,
 )
-from app.infrastructure.database.repositories.settings_repository import (
+from antidetect.infrastructure.database.repositories.settings_repository import (
     SqliteSettingsRepository,
 )
 
@@ -37,13 +37,20 @@ def _stub_proxy_probe(monkeypatch):
     """Integration tests never hit real proxies; the launch-time probes must
     always succeed so test flows are not blocked by real network checks."""
     monkeypatch.setattr(
-        "app.infrastructure.chromium.chromium_manager.probe_proxy",
+        "antidetect.infrastructure.chromium.chromium_manager.probe_proxy",
         lambda _proxy, _timeout: True,
     )
     monkeypatch.setattr(
-        "app.infrastructure.proxy.transport.probe_google",
+        "antidetect.infrastructure.proxy.transport.probe_google",
         lambda _proxy, _timeout=8.0: True,
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_stealth_for_stub_browsers(monkeypatch):
+    """Stub browser binaries expose no DevTools endpoint, so the CDP stealth
+    layer is off for every test except those that opt in (they delenv this)."""
+    monkeypatch.setenv("ANTIDETECT_DISABLE_STEALTH", "1")
 
 
 @pytest.fixture()
@@ -115,8 +122,9 @@ def build_service(
     chromium: Path,
     database: Database | None = None,
     proxies: SqliteProxyRepository | None = None,
+    geo_lookup=None,
 ):
-    from app.application.configuration_generator import ConfigurationGenerator
+    from antidetect.application.fingerprint.generator import ConfigurationGenerator
 
     db = database or Database(config.database_path)
     run_migrations(db)
@@ -132,6 +140,7 @@ def build_service(
         path_resolver=ProfilePathResolver(config.profiles_dir),
         proxies=proxies,
         generator=ConfigurationGenerator(),
+        geo_lookup=geo_lookup,
     )
     return service, db
 
@@ -175,14 +184,35 @@ def qapp():
 @pytest.fixture()
 def gui_container(tmp_path: Path):
     """A real bootstrapped Container pointing at a throwaway data dir."""
-    from app.config.settings import AppConfig
-    from app.di import bootstrap
+    from antidetect.config import AppConfig
+    from antidetect.container import bootstrap
 
     container = bootstrap(AppConfig(data_dir=tmp_path / "data"))
     yield container
     # Drain every GUI worker pool first: closing SQLite while a worker thread
     # is mid-query would segfault the test process.
-    from app.gui.workers.task_runner import TaskRunner
+    from antidetect.gui.workers import TaskRunner
 
     TaskRunner.drain_all()
     container.close()
+
+
+@pytest.fixture(autouse=True)
+def _tests_never_download_chrome(monkeypatch):
+    """No test may reach Google: a test that opens the real "Download Chrome" flow would fetch ~150 MB.
+
+    Tests that need a download give the service their own pretend server. Anything that falls through to
+    the real network is recorded here and fails the test, instead of quietly downloading a browser.
+    """
+    from antidetect.infrastructure.chromium import downloader
+
+    attempts: list[str] = []
+
+    def refuse(url, timeout=30.0):
+        attempts.append(url)
+        raise OSError("the network is switched off in tests")
+
+    monkeypatch.setattr(downloader, "_open", refuse)
+    yield
+    assert not attempts, f"a test tried to reach the network for Chrome: {attempts}"
+

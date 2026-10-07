@@ -1,1 +1,0 @@
-"""Stage-1 placeholder pages (Profiles, Proxies, Configurations, Settings)."""

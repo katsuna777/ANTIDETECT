@@ -1,0 +1,278 @@
+from __future__ import annotations
+
+
+import pytest
+
+from antidetect.application.fingerprint.generator import ConfigurationGenerator
+from antidetect.application.configuration_service import ConfigurationService
+from antidetect.domain.errors import BrowserConfigurationNotFoundError
+from tests.conftest import build_service
+
+
+@pytest.fixture()
+def config_service(configuration_repo) -> ConfigurationService:
+    return ConfigurationService(
+        configurations=configuration_repo,
+        generator=ConfigurationGenerator(),
+    )
+
+
+def test_create_configuration_persists_all_fields(config_service):
+    cfg = config_service.create_configuration(
+        name="  My Cfg  ",
+        user_agent="Mozilla/5.0 TestUA",
+        platform="windows",
+        language="en",
+        locale="en-US",
+        timezone="Europe/Berlin",
+        screen_width=2560,
+        screen_height=1440,
+        device_pixel_ratio=1.5,
+        color_depth=24,
+        webgl_settings={"vendor": "Google Inc.", "renderer": "Test Renderer"},
+        hardware_settings={"cores": 8, "memory_gb": 16},
+    )
+    assert cfg.name == "My Cfg"
+    assert cfg.user_agent == "Mozilla/5.0 TestUA"
+    assert cfg.platform == "windows"
+    assert cfg.language_tag == "en-US"
+    assert cfg.screen_width == 2560
+    assert cfg.device_pixel_ratio == 1.5
+    assert cfg.color_depth == 24
+    assert cfg.webgl_settings == {"vendor": "Google Inc.", "renderer": "Test Renderer"}
+    assert cfg.hardware_settings == {"cores": 8, "memory_gb": 16}
+
+    loaded = config_service.get_configuration(cfg.id)
+    assert loaded == cfg or loaded.id == cfg.id  # freshly read back, not the in-memory object
+    assert loaded.name == "My Cfg"
+
+
+def test_create_configuration_rejects_unsafe_name(config_service):
+    with pytest.raises(ValueError):
+        config_service.create_configuration("bad/name")
+    with pytest.raises(ValueError):
+        config_service.create_configuration("   ")
+
+
+def test_create_configuration_rejects_duplicate_name(config_service):
+    config_service.create_configuration("Dupe")
+    with pytest.raises(ValueError):
+        config_service.create_configuration("Dupe")
+    with pytest.raises(ValueError):
+        config_service.create_configuration("  Dupe ")  # normalized to "Dupe"
+
+
+def test_get_missing_configuration_raises(config_service):
+    with pytest.raises(BrowserConfigurationNotFoundError):
+        config_service.get_configuration(99_999)
+
+
+def test_update_configuration_changes_and_clears(config_service):
+    cfg = config_service.create_configuration("Editable", user_agent="Old/1.0")
+    config_service.update_configuration(
+        cfg.id, name="Renamed", user_agent="New/2.0", color_depth=16
+    )
+    updated = config_service.get_configuration(cfg.id)
+    assert updated.name == "Renamed"
+    assert updated.user_agent == "New/2.0"
+    assert updated.color_depth == 16
+
+    config_service.update_configuration(cfg.id, user_agent="")
+    assert config_service.get_configuration(cfg.id).user_agent is None
+
+
+def test_update_configuration_rejects_duplicate_name(config_service):
+    config_service.create_configuration("First")
+    second = config_service.create_configuration("Second")
+    with pytest.raises(ValueError):
+        config_service.update_configuration(second.id, name="First")
+
+
+def test_update_missing_configuration_raises(config_service):
+    with pytest.raises(BrowserConfigurationNotFoundError):
+        config_service.update_configuration(404, name="Boom")
+
+
+def test_generate_persists_and_uniquifies_name(config_service):
+    first = config_service.generate_configuration(template="macos-chrome")
+    assert first.name == "macos-chrome"
+    assert first.platform == "macos"
+
+    duplicate = config_service.generate_configuration(template="macos-chrome")
+    assert duplicate.name == "macos-chrome-2"
+    assert duplicate.platform == "macos"
+
+
+def test_generate_uses_template_by_default_when_named_after_it(config_service):
+    cfg = config_service.generate_configuration(template="windows-laptop")
+    assert cfg.platform == "windows"
+    assert "Windows NT 10.0" in cfg.user_agent
+    assert "Edg/" not in cfg.user_agent  # the brand follows the installed browser
+
+
+def test_generate_unknown_template_raises(config_service):
+    with pytest.raises(ValueError):
+        config_service.generate_configuration(template="nope")
+
+
+def test_list_configurations_ordered_by_id(config_service):
+    a = config_service.create_configuration("A")
+    b = config_service.create_configuration("B")
+    cfg_ids = config_service.get_default().id  # seeded "default" exists
+    assert config_service.list_configurations()[0].id == cfg_ids
+    ids = [cfg.id for cfg in config_service.list_configurations()]
+    assert ids == sorted(ids) and {a.id, b.id} <= set(ids)
+
+
+def test_duplicate_configuration_copies_all_fields(config_service):
+    source = config_service.generate_configuration(template="macos-chrome")
+    copy = config_service.duplicate_configuration(source.id)
+    assert copy.name == f"{source.name} (copy)"
+    assert copy.platform == source.platform
+    assert copy.user_agent == source.user_agent
+    assert copy.webgl_settings == source.webgl_settings
+    assert copy.hardware_settings == source.hardware_settings
+    assert copy.id != source.id
+
+
+def test_duplicate_configuration_with_custom_name(config_service):
+    source = config_service.create_configuration("Orig")
+    copy = config_service.duplicate_configuration(source.id, name="Fresh")
+    assert copy.name == "Fresh"
+
+
+def test_duplicate_rejects_colliding_name(config_service):
+    config_service.create_configuration("Taken")
+    source = config_service.create_configuration("Src")
+    with pytest.raises(ValueError):
+        config_service.duplicate_configuration(source.id, name="Taken")
+
+
+def test_delete_configuration_detaches_profiles(config, fake_chromium):
+    service, db = build_service(config, fake_chromium)
+    try:
+        configuration_repo = service._configurations
+        config_service = ConfigurationService(
+            configurations=configuration_repo,
+            generator=ConfigurationGenerator(),
+        )
+        cfg = config_service.create_configuration("ToDelete")
+        profile = service.create_profile("Holder", configuration_id=cfg.id)
+        assert profile.configuration_id == cfg.id
+
+        config_service.delete_configuration(cfg.id)
+
+        detached = service.get_profile(profile.id)
+        assert detached.configuration_id is None
+        assert configuration_repo.get(cfg.id) is None
+    finally:
+        db.close()
+
+
+def test_delete_missing_configuration_raises(config_service):
+    with pytest.raises(BrowserConfigurationNotFoundError):
+        config_service.delete_configuration(404)
+
+
+def test_create_rejects_unknown_timezone(config_service):
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        config_service.create_configuration("Bad TZ", timezone="UTC+3")
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        config_service.create_configuration("Bad TZ 2", timezone="Moscow")
+
+
+def test_create_accepts_supported_timezone_without_user_agent(config_service):
+    cfg = config_service.create_configuration("TZ Only", timezone="Europe/Moscow")
+    assert cfg.timezone == "Europe/Moscow"
+
+
+def test_update_rejects_unknown_timezone(config_service):
+    cfg = config_service.create_configuration("To Edit", timezone="Europe/Berlin")
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        config_service.update_configuration(cfg.id, timezone="Mars/Olympus")
+    assert config_service.get_configuration(cfg.id).timezone == "Europe/Berlin"
+
+
+def _chrome_cfg(config_service, major=150, name="Drifted"):
+    from antidetect.application.fingerprint.generator import build_client_hints
+
+    return config_service.create_configuration(
+        name,
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            f"(KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
+        ),
+        platform="windows",
+        client_hints=build_client_hints("chrome", "windows", f"{major}.0.0.0"),
+    )
+
+
+def _macos_cfg(config_service, name="MacCfg"):
+    from antidetect.application.fingerprint.generator import build_client_hints
+
+    return config_service.create_configuration(
+        name,
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+        ),
+        platform="macos",
+        client_hints=build_client_hints("chrome", "macos", "152.0.0.0"),
+        webgl_settings={
+            "vendor": "Google Inc. (Apple)",
+            "renderer": "ANGLE (Apple, Apple M1, OpenGL 4.1)",
+        },
+    )
+
+
+def test_platform_change_rebuilds_ua_hints_and_webgl(config_service):
+    cfg = _macos_cfg(config_service)
+    updated = config_service.update_configuration(cfg.id, platform="linux")
+
+    assert updated.platform == "linux"
+    assert "Linux" in updated.user_agent
+    assert "Macintosh" not in updated.user_agent
+    assert "Chrome/152." in updated.user_agent
+    assert updated.client_hints["platform"] == "Linux"
+    assert updated.client_hints["fullVersion"].startswith("152.")
+    assert "Mesa" in updated.webgl_settings["renderer"]
+    assert "Apple M1" not in updated.webgl_settings["renderer"]
+
+
+def test_platform_change_moves_the_display_kind_with_it(config_service):
+    cfg = config_service.create_configuration(
+        "Retina", platform="macos", device_pixel_ratio=2.0, color_depth=30
+    )
+    to_windows = config_service.update_configuration(cfg.id, platform="windows")
+    assert to_windows.color_depth == 24                       # a Windows display never reports 30
+
+    back = config_service.update_configuration(cfg.id, platform="macos")
+    assert back.color_depth == 30                             # ...and a retina Mac does
+
+    explicit = config_service.update_configuration(cfg.id, platform="linux", color_depth=16)
+    assert explicit.color_depth == 16                         # a value the caller chose wins
+
+
+def test_platform_unchanged_leaves_derived_fields_alone(config_service):
+    cfg = _macos_cfg(config_service)
+    updated = config_service.update_configuration(cfg.id, platform="macos")
+    assert updated.user_agent == cfg.user_agent
+    assert updated.client_hints == cfg.client_hints
+
+
+def test_explicit_hints_win_over_platform_realign(config_service):
+    from antidetect.application.fingerprint.generator import build_client_hints
+
+    cfg = _macos_cfg(config_service)
+    with pytest.raises(ValueError, match="mismatches client_hints"):
+        config_service.update_configuration(
+            cfg.id,
+            platform="linux",
+            client_hints=build_client_hints("chrome", "macos", "152.0.0.0"),
+        )
+
+
+def test_platform_change_on_bare_config_passes(config_service):
+    cfg = config_service.create_configuration("Bare")
+    updated = config_service.update_configuration(cfg.id, platform="linux")
+    assert updated.platform == "linux"
