@@ -1,0 +1,34 @@
+name: Windows tests
+
+# Windows is what most buyers use and it is not what the code is written on, so the suite runs there too.
+# Informational on purpose: it is not part of CI / Build / Release, so a red mark here never holds a build
+# back, but read it before you ship.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: windows-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - name: Install the exact locked dependencies (uv.lock) with Python 3.12
+        run: uv sync --frozen --extra dev --python 3.12
+      # -v names the test that is running (so a hang is visible); faulthandler dumps every thread's stack
+      # when one test runs longer than two minutes.
+      - name: Run tests
+        run: uv run --no-sync pytest -v -rfE -o faulthandler_timeout=120

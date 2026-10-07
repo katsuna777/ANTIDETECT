@@ -386,7 +386,7 @@ def _manager(fake_chromium: Path, tmp_path: Path, factory, **kwargs) -> Chromium
 
 
 def _cmdline(pid: int) -> str:
-    out = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
+    out = subprocess.run(["ps", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
     return out.stdout
 
 
