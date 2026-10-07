@@ -5,6 +5,11 @@ name: Live browser checks
 # every push: run it by hand or let the weekly schedule do it.
 on:
   workflow_dispatch:
+    inputs:
+      only-windows:
+        description: Run on Windows only (a macOS runner minute is billed 10x on a private repo)
+        type: boolean
+        default: false
   schedule:
     - cron: "0 5 * * 1"
 
@@ -13,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: ${{ fromJSON(inputs.only-windows && '["windows-latest"]' || '["windows-latest","macos-latest","ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -24,8 +29,8 @@ jobs:
       # (macOS runners have one). The checks compare the GPU the page claims with what every realm reports.
       ANTIDETECT_CHROMIUM_ARGS: "--use-angle=swiftshader --enable-unsafe-swiftshader"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install Qt6 system libraries and a virtual display (Linux)

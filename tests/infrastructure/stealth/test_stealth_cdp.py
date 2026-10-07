@@ -711,13 +711,21 @@ def _evaluate_on_new_tab(profile_dir: Path, url: str, expression: str, wait: flo
         target = browser.call("Target.createTarget", {"url": url})["targetId"]
         session = browser.call("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
         time.sleep(wait)
-        reply = browser.call(
-            "Runtime.evaluate",
-            {"expression": expression, "awaitPromise": True, "returnByValue": True, "userGesture": True},
-            session,
-            timeout=90,
-        )
-        return reply["result"]["value"]
+        for attempt in range(4):
+            try:
+                reply = browser.call(
+                    "Runtime.evaluate",
+                    {"expression": expression, "awaitPromise": True, "returnByValue": True, "userGesture": True},
+                    session,
+                    timeout=90,
+                )
+                return reply["result"]["value"]
+            except StealthError as exc:
+                # The page was still loading (a slow hosted runner): its execution context went away under
+                # the call. Ask again once it has settled; any other failure is real.
+                if "context was destroyed" not in str(exc) or attempt == 3:
+                    raise
+                time.sleep(1.5)
     finally:
         browser.close()
 
