@@ -14,7 +14,7 @@ __pycache__/
 *.egg-info/
 
 # Local application data (dev database, browser profiles, logs, cookie backups)
-data/
+/data/
 
 # Tool output
 graphify-out/

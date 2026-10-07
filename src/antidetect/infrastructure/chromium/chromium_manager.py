@@ -13,6 +13,7 @@ from antidetect.application.fingerprint import privacy
 from antidetect.domain.errors import ChromiumError
 from antidetect.domain.models.browser_configuration import BrowserConfiguration
 from antidetect.domain.models.proxy import Proxy
+from antidetect.infrastructure.chromium.file_version import windows_file_version
 from antidetect.infrastructure.chromium.paths import discover_chromium
 from antidetect.infrastructure.chromium import preferences
 from antidetect.infrastructure.chromium.proxy_shim import LocalProxyShim
@@ -118,7 +119,8 @@ _BINARY_VERSION_CACHE: dict[str, str | None] = {}
 
 
 def chromium_binary_version(binary: Path) -> str | None:
-    """Best-effort `binary --version` probe (never raises, cached, 5s timeout).
+    """Best-effort version probe: `binary --version`, or the version stamped into the exe on Windows
+    (never raises, cached, 5s timeout).
 
     Returns the raw version string (e.g. "Google Chrome 152.0.7977.83") or
     None when the binary does not answer (broken installs, timeouts).
@@ -126,6 +128,11 @@ def chromium_binary_version(binary: Path) -> str | None:
     """
     key = str(binary)
     if key in _BINARY_VERSION_CACHE:
+        return _BINARY_VERSION_CACHE[key]
+    # Windows: `chrome.exe --version` prints nothing, so read the version from the file itself (no process).
+    stamped = windows_file_version(binary)
+    if stamped:
+        _BINARY_VERSION_CACHE[key] = f"Chrome {stamped}"
         return _BINARY_VERSION_CACHE[key]
     try:
         completed = subprocess.run(

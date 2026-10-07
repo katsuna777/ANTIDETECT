@@ -38,6 +38,7 @@ def test_poll_shows_existing_entries_and_is_incremental(gui_container):
     page.poll()
     assert spin_wait(lambda: "hello-from-test" in _visible_messages(page))
     before = page._model.last_id
+    assert spin_wait(lambda: not page._polling)       # a poll asked for while one is finishing is ignored
     gui_container.logs.info("proxy", "incremental-entry")
     page.poll()
     assert spin_wait(lambda: "incremental-entry" in _visible_messages(page))
